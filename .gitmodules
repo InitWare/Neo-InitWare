@@ -1,0 +1,3 @@
+[submodule "vendor/quickjs"]
+	path = vendor/quickjs
+	url = ../quickjs
