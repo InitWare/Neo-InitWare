@@ -153,6 +153,12 @@ IncludeCategories:
   - Regex: '^<[^/].*\.h'
     Priority: 9
     SortPriority: 90
+  - Regex: '^<c[^/].*'
+    Priority: 9
+    SortPriority: 90
+  - Regex: '^<[^/].*'
+    Priority: 9
+    SortPriority: 90
   - Regex: '^\".*\.h\"'
     Priority: 10
     SortPriority: 100
