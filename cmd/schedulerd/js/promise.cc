@@ -18,17 +18,14 @@ JSPromiseDesc::init(JSContext *ctx)
 void
 JSPromiseDesc::clear()
 {
-	m_promObj = JS_UNDEFINED;
-	m_fnResolve[0] = JS_UNDEFINED;
-	m_fnResolve[1] = JS_UNDEFINED;
+	JS_UnRef(m_ctx, &m_promObj);
+	JS_UnRef(m_ctx, &m_fnResolve[0]);
+	JS_UnRef(m_ctx, &m_fnResolve[1]);
 }
 
-void
-JSPromiseDesc::free(JSContext *ctx)
+JSPromiseDesc::~JSPromiseDesc()
 {
-	JS_FreeValue(ctx, m_promObj);
-	JS_FreeValue(ctx, m_fnResolve[0]);
-	JS_FreeValue(ctx, m_fnResolve[1]);
+	clear();
 }
 
 void
@@ -40,9 +37,7 @@ JSPromiseDesc::settle(JSContext *ctx, bool reject, int argc, JSValueConst *argv)
 	for (int i = 0; i < argc; i++)
 		JS_FreeValue(ctx, argv[i]);
 	JS_FreeValue(ctx, ret);
-	JS_FreeValue(ctx, m_fnResolve[0]);
-	JS_FreeValue(ctx, m_fnResolve[1]);
-	free(ctx);
+	clear();
 }
 
 void

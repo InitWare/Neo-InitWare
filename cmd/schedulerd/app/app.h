@@ -1,6 +1,8 @@
 #ifndef APP_H_
 #define APP_H_
 
+#include <sys/poll.h>
+
 #include <functional>
 
 #include "../js/js.h"
@@ -27,19 +29,39 @@ class App {
 		    : m_cb(cb) {};
 	};
 
+	struct FD {
+		typedef std::function<void(int)> callback_t;
+
+		int m_fd;
+		int m_events;
+		callback_t
+		    m_cb; //!< callback to invoke on FD readable/writeable
+
+		FD(int fd, int events, callback_t cb)
+		    : m_fd(fd)
+		    , m_events(events)
+		    , m_cb(cb) {};
+	};
+
 	std::list<std::unique_ptr<Timer>> m_timers;
+	std::list<std::unique_ptr<FD>> m_fds;
 
 	void handle_timer(struct kevent *kev);
+	void handle_fd(struct kevent *kev);
 
     public:
-	int kq;
-	JS js;
+	int m_kq;
+	JS m_js;
+	Scheduler m_sched;
 
 	App();
 
 	/** Add a new timer. Returns 0 on failure, otherwise unique ID. */
 	timerid_t add_timer(bool recur, int ms, Timer::callback_t cb);
 	int del_timer(timerid_t id);
+
+	int add_fd(int fd, int events, FD::callback_t cb);
+	int del_fd(int fd);
 
 	int loop();
 };

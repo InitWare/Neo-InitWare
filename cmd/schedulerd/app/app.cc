@@ -16,7 +16,7 @@ App::add_timer(bool recur, int ms, Timer::callback_t cb)
 
 	EV_SET(&kev, (uintptr_t)timer, EVFILT_TIMER,
 	    EV_ADD | EV_ENABLE | (recur ? 0 : EV_ONESHOT), 0, ms, NULL);
-	ret = kevent(kq, &kev, 1, NULL, 0, NULL);
+	ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
 	if (ret < 0) {
 		m_timers.pop_back();
 		throw std::system_error(errno, std::generic_category());
@@ -36,7 +36,7 @@ App::del_timer(timerid_t id)
 	for (auto &timer : m_timers) {
 		if ((uintptr_t)timer.get() == id) {
 			EV_SET(&kev, id, EVFILT_TIMER, EV_DELETE, 0, 0, NULL);
-			ret = kevent(kq, &kev, 1, NULL, 0, NULL);
+			ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
 			if (ret < 0)
 				log_dbg("Couldn't remove KQueue timer!");
 
@@ -50,6 +50,51 @@ App::del_timer(timerid_t id)
 	return -ENOENT;
 }
 
+int
+App::add_fd(int fd, int events, FD::callback_t cb)
+{
+	FD *fdo;
+	struct kevent kev;
+	int ret;
+
+	m_fds.emplace_back(std::make_unique<FD>(fd, events, cb));
+	fdo = m_fds.back().get();
+
+	EV_SET(&kev, fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, fdo);
+	ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
+	if (ret < 0) {
+		m_fds.pop_back();
+		throw std::system_error(errno, std::generic_category());
+	}
+
+	log_trace("Added FD %d\n", fd);
+
+	return 0;
+}
+
+int
+App::del_fd(int fd)
+{
+	struct kevent kev;
+	int ret;
+
+	for (auto &fdo : m_fds) {
+		if (fdo->m_fd == fd) {
+			EV_SET(&kev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+			ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
+			if (ret < 0)
+				log_dbg("Couldn't remove KQueue FD event!");
+
+			m_fds.remove(fdo);
+			log_trace("Deleted FD %d\n", fd);
+			return 0;
+		}
+	}
+
+	log_dbg("Asked to delete watch on FD %d but none exists\n", fd);
+	return -ENOENT;
+}
+
 void
 App::handle_timer(struct kevent *kev)
 {
@@ -57,6 +102,15 @@ App::handle_timer(struct kevent *kev)
 
 	log_trace("Timer %lu elapsed\n", timer);
 	timer->m_cb((timerid_t)timer);
+}
+
+void
+App::handle_fd(struct kevent *kev)
+{
+	FD *fd = (FD *)kev->udata;
+
+	log_trace("FD %d had an event\n", kev->ident);
+	fd->m_cb(kev->ident);
 }
 
 int
@@ -67,7 +121,7 @@ App::loop()
 
 	while (true) {
 		log_trace(" -- iteration --\n");
-		ret = kevent(kq, NULL, 0, &rev, 1, NULL);
+		ret = kevent(m_kq, NULL, 0, &rev, 1, NULL);
 		if (ret < 0)
 			log_err("KEvent returned %d: %m", ret);
 		else if (ret == 0)
@@ -77,19 +131,22 @@ App::loop()
 			case EVFILT_TIMER:
 				handle_timer(&rev);
 				break;
+			case EVFILT_READ:
+				handle_fd(&rev);
+				break;
 			default:
 				log_err("Unhandled KEvent filter!\n");
 			}
 		}
 		log_trace("Running pending jobs:\n");
-		js.run_pending_jobs();
+		m_js.run_pending_jobs();
 	}
 
 	return 0;
 }
 
 App::App()
-    : js(this)
+    : m_js(this)
 {
-	kq = kqueue();
+	m_kq = kqueue();
 }

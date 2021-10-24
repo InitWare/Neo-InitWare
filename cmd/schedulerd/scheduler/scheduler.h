@@ -142,6 +142,8 @@ class Schedulable {
 
     public:
 	typedef std::shared_ptr<Schedulable> SPtr;
+
+	Edge *add_edge(Edge::Type type, SPtr to);
 };
 
 /* A requirement from one job that another job completete successfully. */

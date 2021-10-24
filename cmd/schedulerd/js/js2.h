@@ -46,32 +46,51 @@ struct JSTimer : public JSCXXClass<JSTimer> {
  * Promise descriptor - not a JS object itself, but is associated with one.
  */
 class JSPromiseDesc {
-	/** Settle a promise. Frees argv. */
-	void settle(JSContext *ctx, bool reject, int argc, JSValueConst *argv);
 
     public:
-	JSValue m_promObj = JS_UNDEFINED;
+	JSContext *m_ctx;
+	JSValue m_promObj = JS_UNDEFINED; ///< associated JS promise object
 	JSValue m_fnResolve[2] = {
 		JS_UNDEFINED
-	}; /* resolve and reject function */
-
-	/* JS factory methods */
-	static JSValue setTimeout(JSContext *ctx, JSValueConst this_val,
-	    int argc, JSValueConst *argv, int magic);
-
-	/* JS instance methods */
-	JSValue clearTimeout(JSContext *ctx, JSValueConst this_val, int argc,
-	    JSValueConst *argv);
+	}; /* resolve and reject functions */
 
 	/* C++ instance methods */
+	~JSPromiseDesc();
+
 	bool is_pending(); ///< whether there is an associated JS promise obj
 
 	JSValue init(JSContext *ctx); ///< initialise
-	void clear();		      ///< unset the assocaited JS objects
-	void free(JSContext *ctx);    ///< free the associated JS objects
+	void clear();		      ///< unset and unref associated JS objects
+	/** Settle a promise. Frees argv. */
+	void settle(JSContext *ctx, bool reject, int argc, JSValueConst *argv);
 	void resolve(JSContext *ctx, int argc, JSValueConst *argv);
 	void reject(JSContext *ctx, int argc, JSValueConst *argv);
 
+	void gc_mark(JSRuntime *rt, JS_MarkFunc *mark_func);
+};
+
+struct JSFD : public JSCXXClass<JSFD> {
+	static JSClassID clsid;
+	static JSClassDef cls;
+	static JSCFunctionListEntry funcs[];
+	static size_t nfuncs;
+
+	JSContext *m_ctx;
+	int m_fd = -1;
+	JSPromiseDesc m_read;
+
+	/* factory methods */
+	static JSValue onFDReadable(JSContext *ctx, JSValueConst this_val,
+	    int argc, JSValueConst *argv);
+
+	/* instance methods */
+	JSValue ready(JSContext *ctx, JSValueConst this_val, int argc,
+	    JSValueConst *argv);
+
+	/* instance callbacks */
+	void app_cb(int fd);
+	void clear();
+	void finalizer();
 	void gc_mark(JSRuntime *rt, JS_MarkFunc *mark_func);
 };
 
