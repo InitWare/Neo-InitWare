@@ -2,6 +2,7 @@
 #define SCHEDULER_H_
 
 #include <list>
+#include <map>
 #include <memory>
 #include <queue>
 #include <string>
@@ -129,42 +130,111 @@ class Edge {
 
     protected:
 	Type type;			   /** Relationship type bitfield */
-	std::shared_ptr<Schedulable> from; /** Owning object */
+	std::weak_ptr<Schedulable> from;   /** Owning object */
 	std::shared_ptr<Schedulable> to;   /** Related object */
 
     public:
+	Edge(Type type, std::weak_ptr<Schedulable> from,
+	    std::shared_ptr<Schedulable> to);
+	~Edge();
 };
 
 /* The base class of all entities which may be scheduled. */
-class Schedulable {
-	std::string name;
-	std::list<std::unique_ptr<Edge>> edges; /* all edges from this node */
+class Schedulable : public std::enable_shared_from_this<Schedulable> {
+	friend class Scheduler;
+	friend class Edge;
+
+    protected:
+	std::string m_name;
+	std::list<std::unique_ptr<Edge>> edges; /**< edges from this node */
+	std::list<Edge *> edges_to;		/**< edges to this node */
 
     public:
+	typedef std::weak_ptr<Schedulable> WPtr;
 	typedef std::shared_ptr<Schedulable> SPtr;
+
+	Schedulable(std::string name)
+	    : m_name(name) {};
 
 	Edge *add_edge(Edge::Type type, SPtr to);
 };
 
-/* A requirement from one job that another job completete successfully. */
-class JobRequirement {
-	Job *on;       /* on which job is the requirement? */
-	bool required; /* whether this requiremen *must* be met */
-};
-
-/* A state-changing and/or state-querying task for a Schedulable Object. */
-class Job {
-	Schedulable::SPtr object; /* object on which to operate */
-	std::unordered_set<JobRequirement> reqs;
-
-    public:
-	typedef std::unique_ptr<Job> UPtr;
-};
-
 /* A group of jobs in service of one job which defines the objective. */
 class Transaction {
-	std::unordered_set<Job::UPtr> jobs; /* all jobs in the tx */
-	Job *objective; /* the job this tx aims to achieve */
+	/**
+	 * A Job is set of state-changing and/or state-querying tasks for a
+	 * Schedulable object. During a transaction's formation it may consist
+	 * of multiple subjobs. These subjobs must all be mergeable or
+	 * transaction generation will fail.
+	 */
+	struct Job {
+		struct Subjob;
+
+		enum Type {
+			kStart,
+			kVerify,
+			kStop,
+			kReload,
+			kRestart,
+
+			kTryRestart,	/**< restart if up, otherwise nop */
+			kTryReload,	/**< reload if up, otherwise nop */
+			kReloadOrStart, /**< reload if up, otherwise start */
+		};
+
+		/**
+		 * A requirement from one subjob that [a subjob of] another job
+		 * completete successfully.
+		 */
+		struct Requirement {
+			Subjob *on;    /**< on which job is the requirement? */
+			bool required; /**< whether this *must* be met */
+
+			Requirement(Subjob *on, bool required)
+			    : on(on)
+			    , required(required) {};
+			~Requirement();
+		};
+
+		struct Subjob {
+			Job *job; /**< parent job */
+			Type type;
+			std::unordered_set<std::unique_ptr<Requirement>>
+			    reqs; /**< requirements to other subjobs */
+			std::unordered_set<Requirement *>
+			    reqs_on; /**< requirements on this subjob */
+
+			Subjob(Job *job, Type type)
+			    : job(job)
+			    , type(type) {};
+
+			void add_req(Subjob *on, bool required);
+		};
+
+		std::unordered_set<std::unique_ptr<Subjob>> subjobs;
+		Schedulable::SPtr object; /*< object on which to operate */
+
+		Job(Schedulable::SPtr object, Type type, Subjob **sj = NULL)
+		    : object(object)
+		{
+			subjobs.emplace_back(
+			    std::make_unique<Subjob>(this, type));
+			if (sj)
+				*sj = subjobs.back().get();
+		}
+	};
+
+	std::map<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
+	Job *objective; /**< the job this tx aims to achieve */
+
+	/**
+	 * Add a new job including all of its dependencies.
+	 */
+	Job::Subjob *add_job_and_deps(Schedulable::SPtr object, Job::Type op,
+	    Job::Subjob *requirer);
+
+    public:
+	Transaction(Schedulable::SPtr object, Job::Type op);
 };
 
 /*
@@ -178,6 +248,9 @@ class Transaction {
 class Scheduler {
 	std::unordered_set<Schedulable::SPtr> objects;
 	std::queue<std::unique_ptr<Transaction>> transactions;
+
+    public:
+	Schedulable::SPtr add_object(Schedulable::SPtr obj);
 };
 
 #endif /* SCHEDULER_H_ */

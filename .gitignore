@@ -26,3 +26,4 @@ __pycache__/
 bld/
 compile_commands.json
 build/
+.vs/
