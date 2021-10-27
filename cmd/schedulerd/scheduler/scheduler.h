@@ -1,6 +1,7 @@
 #ifndef SCHEDULER_H_
 #define SCHEDULER_H_
 
+#include <algorithm>
 #include <list>
 #include <map>
 #include <memory>
@@ -17,6 +18,10 @@ class Schedulable;
 /** An edge between two entities in the Schedulable Objects Graph. */
 class Edge {
     public:
+	class Visitor {
+		virtual void operator()(std::unique_ptr<Edge> &edge) = 0;
+	};
+
 	/**
 	 * This enumerated type defines which relationships #from has with #to.
 	 */
@@ -129,11 +134,12 @@ class Edge {
 	};
 
     protected:
-	Type type;			   /** Relationship type bitfield */
-	std::weak_ptr<Schedulable> from;   /** Owning object */
-	std::shared_ptr<Schedulable> to;   /** Related object */
+	std::weak_ptr<Schedulable> from; /** Owning object */
 
     public:
+	Type type;			 /** Relationship type bitfield */
+	std::shared_ptr<Schedulable> to; /** Related object */
+
 	Edge(Type type, std::weak_ptr<Schedulable> from,
 	    std::shared_ptr<Schedulable> to);
 	~Edge();
@@ -157,10 +163,14 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	    : m_name(name) {};
 
 	Edge *add_edge(Edge::Type type, SPtr to);
+	template <typename T> T foreach_edge(T);
 };
 
 /* A group of jobs in service of one job which defines the objective. */
 class Transaction {
+	friend class EdgeVisitor;
+
+    protected:
 	/**
 	 * A Job is set of state-changing and/or state-querying tasks for a
 	 * Schedulable object. During a transaction's formation it may consist
@@ -225,7 +235,7 @@ class Transaction {
 	};
 
 	std::map<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
-	Job *objective; /**< the job this tx aims to achieve */
+	Job::Subjob *objective; /**< the job this tx aims to achieve */
 
 	/**
 	 * Add a new job including all of its dependencies.
@@ -252,5 +262,16 @@ class Scheduler {
     public:
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
 };
+
+/*
+ * templates/inlines
+ */
+
+template <typename T>
+T
+Schedulable::foreach_edge(T functor)
+{
+	return std::for_each(edges.begin(), edges.end(), functor);
+}
 
 #endif /* SCHEDULER_H_ */
