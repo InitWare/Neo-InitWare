@@ -15,7 +15,7 @@ int
 main(int argc, char *argv[])
 {
 	App app;
-	std::ifstream t(argv[1]);
+	/*std::ifstream t(argv[1]);
 	std::stringstream buffer;
 	std::string fname(argv[1]);
 	std::string txt;
@@ -23,7 +23,7 @@ main(int argc, char *argv[])
 	buffer << t.rdbuf();
 	txt = buffer.str();
 
-	JS::eval(app.m_js.m_ctx, fname, txt, JS_EVAL_TYPE_MODULE);
+	JS::eval(app.m_js.m_ctx, fname, txt, JS_EVAL_TYPE_MODULE);*/
 
 	//!! test code
 	Schedulable::SPtr a;
@@ -38,13 +38,19 @@ main(int argc, char *argv[])
 	b->add_edge(Edge::kRequire, a);
 	b->add_edge(Edge::kAfter, a);
 
-	/* a requiredby b */
+	/* a requiredby/before b */
 	a->add_edge(Edge::kPropagatesStopTo, b);
+	a->add_edge(Edge::kBefore, b);
+	a->add_edge(Edge::kAfter, c);
 
-	/* c requires b */
+	/* c requires/after b */
 	c->add_edge(Edge::kRequire, b);
+	c->add_edge(Edge::kAfter, b);
+
 	/* b requiredby c */
 	b->add_edge(Edge::kPropagatesStopTo, c);
+
+	Transaction tx(c, Transaction::JobType::kStart);
 
 	//! test code ends
 

@@ -1,5 +1,15 @@
 #include "scheduler.h"
 
+std::string
+Transaction::Job::describe() const
+{
+	std::string res = "on " + object->m_name + " do {";
+	for (auto &subjob : subjobs)
+		res += " " + std::to_string(subjob->type);
+	res += " }";
+	return std::move(res);
+}
+
 Edge::Edge(Type type, Schedulable::WPtr from, Schedulable::SPtr to)
     : type(type)
     , from(from)

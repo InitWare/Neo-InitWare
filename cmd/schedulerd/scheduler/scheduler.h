@@ -149,6 +149,7 @@ class Edge {
 class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	friend class Scheduler;
 	friend class Edge;
+	friend class Transaction;
 
     protected:
 	std::string m_name;
@@ -169,62 +170,72 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 /* A group of jobs in service of one job which defines the objective. */
 class Transaction {
 	friend class EdgeVisitor;
+	friend class OrderVisitor;
+
+    public:
+	enum JobType {
+		kStart,
+		kVerify,
+		kStop,
+		kReload,
+		kRestart,
+
+		kTryStart,	/**< as kStart, but only as requirement of
+				   kTryRestart */
+		kTryRestart,	/**< restart if up, otherwise nop */
+		kTryReload,	/**< reload if up, otherwise nop */
+		kReloadOrStart, /**< reload if up, otherwise start */
+	};
 
     protected:
 	/**
 	 * A Job is set of state-changing and/or state-querying tasks for a
-	 * Schedulable object. During a transaction's formation it may consist
-	 * of multiple subjobs. These subjobs must all be mergeable or
-	 * transaction generation will fail.
+	 * Schedulable object. During a transaction's formation it may
+	 * consist of multiple subjobs. These subjobs must all be mergeable
+	 * or transaction generation will fail.
 	 */
 	struct Job {
 		struct Subjob;
 
-		enum Type {
-			kStart,
-			kVerify,
-			kStop,
-			kReload,
-			kRestart,
-
-			kTryRestart,	/**< restart if up, otherwise nop */
-			kTryReload,	/**< reload if up, otherwise nop */
-			kReloadOrStart, /**< reload if up, otherwise start */
-		};
-
 		/**
-		 * A requirement from one subjob that [a subjob of] another job
-		 * completete successfully.
+		 * A requirement from one subjob that [a subjob of] another
+		 * job completete successfully.
 		 */
 		struct Requirement {
 			Subjob *on;    /**< on which job is the requirement? */
 			bool required; /**< whether this *must* be met */
+			bool goal_required; /**< whether *must* be met for goal
+					     */
 
-			Requirement(Subjob *on, bool required)
+			Requirement(Subjob *on, bool required,
+			    bool goal_required)
 			    : on(on)
-			    , required(required) {};
+			    , required(required)
+			    , goal_required(goal_required) {};
 			~Requirement();
 		};
 
 		struct Subjob {
 			Job *job; /**< parent job */
-			Type type;
+			JobType type;
 			std::unordered_set<std::unique_ptr<Requirement>>
 			    reqs; /**< requirements to other subjobs */
 			std::unordered_set<Requirement *>
 			    reqs_on; /**< requirements on this subjob */
 
-			Subjob(Job *job, Type type)
+			Subjob(Job *job, JobType type)
 			    : job(job)
 			    , type(type) {};
 
-			void add_req(Subjob *on, bool required);
+			/** Add a requirement on another subjob. */
+			void add_req(Subjob *on, bool required,
+			    bool goal_required);
 		};
 
 		std::unordered_set<std::unique_ptr<Subjob>> subjobs;
 		Schedulable::SPtr object; /*< object on which to operate */
 
-		Job(Schedulable::SPtr object, Type type, Subjob **sj = NULL)
+		Job(Schedulable::SPtr object, JobType type, Subjob **sj = NULL)
 		    : object(object)
 		{
 			subjobs.emplace_back(
@@ -232,6 +243,9 @@ class Transaction {
 			if (sj)
 				*sj = subjobs.back().get();
 		}
+
+		std::string describe() const;
+		void to_graph(std::ostream &out) const;
 	};
 
 	std::map<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
@@ -240,11 +254,18 @@ class Transaction {
 	/**
 	 * Add a new job including all of its dependencies.
 	 */
-	Job::Subjob *add_job_and_deps(Schedulable::SPtr object, Job::Type op,
-	    Job::Subjob *requirer);
+	Job::Subjob *submit_job(Schedulable::SPtr object, JobType op,
+	    bool is_goal = false);
+
+    private:
+	bool is_cyclic(Job *origin, std::vector<Job *> &path);
+	bool verify_acyclic();
 
     public:
-	Transaction(Schedulable::SPtr object, Job::Type op);
+	Transaction(Schedulable::SPtr object, JobType op);
+
+	static const char *type_str(JobType type);
+	void to_graph(std::ostream &out) const;
 };
 
 /*

@@ -60,7 +60,9 @@ App::add_fd(int fd, int events, FD::callback_t cb)
 	m_fds.emplace_back(std::make_unique<FD>(fd, events, cb));
 	fdo = m_fds.back().get();
 
-	EV_SET(&kev, fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, fdo);
+	/* we need to use typeof() as libkqueue and BSD kqueue vary */
+	EV_SET(&kev, fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0,
+	    (typeof(kev.udata))fdo);
 	ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
 	if (ret < 0) {
 		m_fds.pop_back();

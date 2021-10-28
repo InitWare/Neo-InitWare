@@ -1,15 +1,17 @@
 #include <algorithm>
+#include <iostream>
 
 #include "scheduler.h"
 
 class EdgeVisitor : public Edge::Visitor {
     public:
-	EdgeVisitor(Edge::Type type, Transaction::Job::Type op, Transaction &tx,
-	    Transaction::Job::Subjob *requirer)
+	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
+	    Transaction::Job::Subjob *requirer, bool is_required)
 	    : type(type)
 	    , op(op)
 	    , tx(tx)
 	    , requirer(requirer)
+	    , is_required(is_required)
 	{
 	}
 
@@ -17,16 +19,20 @@ class EdgeVisitor : public Edge::Visitor {
 
     private:
 	Edge::Type type;
-	Transaction::Job::Type op;
+	Transaction::JobType op;
 	Transaction &tx;
 	Transaction::Job::Subjob *requirer;
+	bool is_required;
 };
 
 void
 EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
-	if (edge->type & type)
-		tx.add_job_and_deps(edge->to, op, requirer);
+	if (edge->type & type) {
+		Transaction::Job::Subjob *sj = tx.submit_job(edge->to, op);
+		requirer->add_req(sj, is_required,
+		    tx.objective == sj && is_required);
+	}
 }
 
 template <typename T>
@@ -37,15 +43,18 @@ among(const T &variable, std::initializer_list<T> values)
 	    std::end(values));
 }
 
-Transaction::Transaction(Schedulable::SPtr object, Job::Type op)
+Transaction::Transaction(Schedulable::SPtr object, JobType op)
 {
-	objective = add_job_and_deps(object, op, NULL);
+	submit_job(object, op, true);
+	verify_acyclic();
+	to_graph(std::cout);
 }
 
 void
-Transaction::Job::Subjob::add_req(Subjob *on, bool required)
+Transaction::Job::Subjob::add_req(Subjob *on, bool required, bool goal_required)
 {
-	reqs.emplace_back(std::make_unique<Requirement>(on, required));
+	reqs.emplace_back(
+	    std::make_unique<Requirement>(on, required, goal_required));
 	on->reqs_on.emplace_back(reqs.back().get());
 }
 
@@ -54,11 +63,75 @@ Transaction::Job::Requirement::~Requirement()
 	on->reqs_on.remove(this);
 }
 
-Transaction::Job::Subjob *
-Transaction::add_job_and_deps(Schedulable::SPtr object, Job::Type op,
-    Job::Subjob *requirer)
+/*
+ * loop detection
+ */
+
+class OrderVisitor : public Edge::Visitor {
+    public:
+	OrderVisitor(Transaction &tx, std::vector<Transaction::Job *> &path,
+	    bool &cyclic)
+	    : tx(tx)
+	    , path(path)
+	    , cyclic(cyclic) {};
+
+	void operator()(std::unique_ptr<Edge> &edge);
+
+    private:
+	Transaction &tx;
+	std::vector<Transaction::Job *> &path;
+	bool &cyclic;
+};
+
+void
+OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
-	Job::Subjob *sj;     /* newly created or existing subjob */
+	if (edge->type == Edge::kAfter && !cyclic) {
+		if (tx.jobs.find(edge->to) != tx.jobs.end()) {
+			/* a job exists for this After edge - check for loop */
+			if (tx.is_cyclic(tx.jobs[edge->to].get(), path))
+				cyclic = true;
+		}
+	}
+}
+
+bool
+Transaction::is_cyclic(Job *job, std::vector<Job *> &path)
+{
+	bool cyclic;
+
+	if (std::find(path.begin(), path.end(), job) != path.end())
+		return true;
+
+	path.push_back(job);
+	job->object->foreach_edge(OrderVisitor(*this, path, cyclic));
+	if (!cyclic)
+		path.pop_back();
+
+	return cyclic;
+}
+
+bool
+Transaction::verify_acyclic()
+{
+	for (auto &job : jobs) {
+		std::vector<Transaction::Job *> path;
+		if (is_cyclic(job.second.get(), path)) {
+			printf("CYCLE DETECTED:\n");
+			for (auto &job2 : path) {
+				printf("%s -> ", job2->object->m_name.c_str());
+			}
+			printf("%s\n", path.front()->object->m_name.c_str());
+			return true;
+		}
+	}
+	return false;
+}
+
+Transaction::Job::Subjob *
+Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
+{
+	Job::Subjob *sj = NULL; /* newly created or existing subjob */
 	bool exists = false; /* whether the subjob already exists */
 
 	if (jobs.find(object) != jobs.end()) {
@@ -79,27 +152,86 @@ Transaction::add_job_and_deps(Schedulable::SPtr object, Job::Type op,
 	if (!sj) /* create a new job with subjob */
 		jobs[object] = std::make_unique<Job>(object, op, &sj);
 
-	if (requirer) /* add req from requirer to this */
-		requirer->add_req(sj, true);
+	if (is_goal)
+		objective = sj;
 
 	if (exists) /* deps will already have been added */
 		return sj;
 
-	if (among(op, { Job::kStart, Job::kRestart })) {
-		object->foreach_edge(
-		    EdgeVisitor(Edge::kRequire, Job::kStart, *this, sj));
-		object->foreach_edge(
-		    EdgeVisitor(Edge::kWant, Job::kStart, *this, sj));
-		object->foreach_edge(
-		    EdgeVisitor(Edge::kRequisite, Job::kVerify, *this, sj));
-		object->foreach_edge(
-		    EdgeVisitor(Edge::kConflict, Job::kStop, *this, sj));
-		object->foreach_edge(
-		    EdgeVisitor(Edge::kConflictedBy, Job::kStop, *this, sj));
-	}
+	if (among(op,
+		{ JobType::kStart, JobType::kRestart, JobType::kTryRestart })) {
+		object->foreach_edge(EdgeVisitor(Edge::kRequire,
+		    JobType::kStart, *this, sj, /* required */ true));
+		object->foreach_edge(EdgeVisitor(Edge::kWant, JobType::kStart,
+		    *this, sj, /* required */ false));
+		object->foreach_edge(EdgeVisitor(Edge::kRequisite,
+		    JobType::kVerify, *this, sj, /* required */ true));
+		object->foreach_edge(EdgeVisitor(Edge::kConflict,
+		    JobType::kStop, *this, sj, /* required */ true));
+		object->foreach_edge(EdgeVisitor(Edge::kConflictedBy,
+		    JobType::kStop, *this, sj, /* required */ false));
+	} else if (op == JobType::kStop)
+		object->foreach_edge(EdgeVisitor(Edge::kPropagatesStopTo,
+		    JobType::kStop, *this, sj, /* required */ true));
+	else if (among(op, { JobType::kReload, JobType::kTryReload }))
+		object->foreach_edge(EdgeVisitor(Edge::kPropagatesReloadTo,
+		    JobType::kTryReload, *this, sj, /* required */ true));
 
-	if (among(op, { Job::kStop, Job::kRestart })) {
-	}
+	if (among(op, { JobType::kRestart, JobType::kTryRestart }))
+		object->foreach_edge(EdgeVisitor(Edge::kPropagatesRestartTo,
+		    JobType::kTryRestart, *this, sj, /* required */ true));
 
 	return sj;
+}
+
+void
+Transaction::Job::to_graph(std::ostream &out) const
+{
+	out << "subgraph cluster_" + object->m_name + " {\n";
+	out << "label=\"" + object->m_name + "\";\n";
+	out << "color=lightgrey;\n";
+	for (auto &sub : subjobs) {
+		std::string nodename = object->m_name + type_str(sub->type);
+		out << nodename + "[label=\"" + type_str(sub->type) + "\"];\n";
+	}
+	out << "}\n";
+
+	for (auto &sub : subjobs) {
+		std::string nodename = object->m_name + type_str(sub->type);
+		for (auto &req : sub->reqs) {
+			std::string to_nodename = req->on->job->object->m_name +
+			    type_str(req->on->type);
+			out << nodename + " -> " + to_nodename + ";\n";
+		}
+	}
+
+	out << "\n";
+}
+
+void
+Transaction::to_graph(std::ostream &out) const
+{
+	out << "digraph TX {\n";
+	out << "graph [compound=true];\n";
+	for (auto &job : jobs)
+		job.second->to_graph(out);
+	out << "}\n";
+}
+
+const char *
+Transaction::type_str(JobType type)
+{
+	static const char *const types[] = {
+		[JobType::kStart] = "start",
+		[JobType::kVerify] = "verify",
+		[JobType::kStop] = "stop",
+		[JobType::kReload] = "reload",
+		[JobType::kRestart] = "restart",
+
+		[JobType::kTryRestart] = "try_restart",
+		[JobType::kTryReload] = "try_reload",
+		[JobType::kReloadOrStart] = "reload_or_Start",
+	};
+
+	return types[type];
 }
