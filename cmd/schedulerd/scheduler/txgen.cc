@@ -3,6 +3,31 @@
 
 #include "scheduler.h"
 
+template <typename T> struct reversify {
+	T &iterable;
+};
+
+template <typename T>
+auto
+begin(reversify<T> w)
+{
+	return std::rbegin(w.iterable);
+}
+
+template <typename T>
+auto
+end(reversify<T> w)
+{
+	return std::rend(w.iterable);
+}
+
+template <typename T>
+reversify<T>
+reverse(T &&iterable)
+{
+	return { iterable };
+}
+
 class EdgeVisitor : public Edge::Visitor {
     public:
 	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
@@ -31,7 +56,7 @@ EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
 	if (edge->type & type) {
 		Transaction::Job::Subjob *sj = tx.submit_job(edge->to, op);
 		requirer->add_req(sj, is_required,
-		    tx.objective == sj && is_required);
+		    (tx.objective == requirer) && is_required);
 	}
 }
 
@@ -51,16 +76,63 @@ Transaction::Transaction(Schedulable::SPtr object, JobType op)
 }
 
 void
+Transaction::Job::get_del_list(std::vector<Subjob *> &dellist)
+{
+	if (deleting)
+		return;
+
+	deleting = true;
+
+	/* every subjob is deleted */
+	for (auto &subjob : subjobs) {
+		dellist.push_back(subjob.get());
+		for (auto &req_on : subjob->reqs_on) {
+			if (req_on->required) {
+				req_on->from->get_del_list(dellist);
+			}
+		}
+	}
+}
+
+void
+Transaction::Job::Subjob::get_del_list(std::vector<Subjob *> &dellist)
+{
+	dellist.push_back(this);
+	for (auto &req_on : reqs_on) {
+		if (req_on->required) {
+			req_on->from->get_del_list(dellist);
+		}
+	}
+}
+
+Transaction::Job::Subjob::~Subjob()
+{
+	/** remove all requirements on this subjob from others' reqs */
+	for (auto req_on = reqs_on.begin(); req_on != reqs_on.end();) {
+		auto old = *req_on;
+		req_on = reqs_on.erase(req_on);
+		old->from->del_req(old);
+	}
+}
+
+void
 Transaction::Job::Subjob::add_req(Subjob *on, bool required, bool goal_required)
 {
 	reqs.emplace_back(
-	    std::make_unique<Requirement>(on, required, goal_required));
+	    std::make_unique<Requirement>(this, on, required, goal_required));
 	on->reqs_on.emplace_back(reqs.back().get());
 }
 
-Transaction::Job::Requirement::~Requirement()
+void
+Transaction::Job::Subjob::del_req(Requirement *reqp)
 {
-	on->reqs_on.remove(this);
+	for (auto &req : reqs) {
+		if (req.get() == reqp) {
+			reqs.remove(req);
+			return;
+		}
+	}
+	throw("Requirement not found");
 }
 
 /*
@@ -112,6 +184,54 @@ Transaction::is_cyclic(Job *job, std::vector<Job *> &path)
 }
 
 bool
+Transaction::try_remove_cycle(std::vector<Job *> &path)
+{
+	for (auto &job : reverse(path)) {
+		bool essential = false;
+
+		if (job == objective->job) {
+			printf("Not deleting job on %s as it's the goal\n",
+			    job->object->m_name.c_str());
+			continue;
+		}
+
+		for (auto &subjob : job->subjobs) {
+			for (auto req_on : subjob->reqs_on) {
+				if (req_on->goal_required) {
+					essential = true;
+					break;
+				}
+			}
+
+			if (essential)
+				break;
+		}
+
+		if (essential) {
+			printf("Can't delete jobs on %s as essential to goal\n",
+			    job->object->m_name.c_str());
+		} else {
+			std::vector<Job::Subjob *> dellist;
+
+			printf(
+			    "Can delete jobs on %s as nonessential to goal\n",
+			    job->object->m_name.c_str());
+			job->get_del_list(dellist);
+
+			for (auto job : dellist) {
+				printf("May delete subjob %s/%s\n",
+				    job->job->object->m_name.c_str(),
+				    type_str(job->type));
+			}
+		}
+
+		/* delete all jobs transitively requiring it */
+	}
+
+	return false;
+}
+
+bool
 Transaction::verify_acyclic()
 {
 	for (auto &job : jobs) {
@@ -122,6 +242,7 @@ Transaction::verify_acyclic()
 				printf("%s -> ", job2->object->m_name.c_str());
 			}
 			printf("%s\n", path.front()->object->m_name.c_str());
+			try_remove_cycle(path);
 			return true;
 		}
 	}
@@ -132,14 +253,15 @@ Transaction::Job::Subjob *
 Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 {
 	Job::Subjob *sj = NULL; /* newly created or existing subjob */
-	bool exists = false; /* whether the subjob already exists */
+	bool exists = false;	/* whether the subjob already exists */
 
 	if (jobs.find(object) != jobs.end()) {
 		std::unique_ptr<Job> &job = jobs[object];
 
 		for (auto &subjob : job->subjobs) {
 			if (subjob->type == op) {
-				sj = subjob.get(); /* use existing subjob */
+				sj = subjob.get(); /* use existing
+						      subjob */
 				exists = true;
 			}
 		}
@@ -199,9 +321,13 @@ Transaction::Job::to_graph(std::ostream &out) const
 	for (auto &sub : subjobs) {
 		std::string nodename = object->m_name + type_str(sub->type);
 		for (auto &req : sub->reqs) {
-			std::string to_nodename = req->on->job->object->m_name +
-			    type_str(req->on->type);
-			out << nodename + " -> " + to_nodename + ";\n";
+			std::string to_nodename = req->to->job->object->m_name +
+			    type_str(req->to->type);
+			out << nodename + " -> " + to_nodename + " ";
+			out << "[label=\"req=" + std::to_string(req->required);
+			out << ",goalreq=" +
+				std::to_string(req->goal_required) + "\"]";
+			out << ";\n";
 		}
 	}
 

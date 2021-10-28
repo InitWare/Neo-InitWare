@@ -150,6 +150,7 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	friend class Scheduler;
 	friend class Edge;
 	friend class Transaction;
+	friend class EdgeVisitor;
 
     protected:
 	std::string m_name;
@@ -197,21 +198,35 @@ class Transaction {
 	struct Job {
 		struct Subjob;
 
+	    private:
+		bool deleting = false; /* whether being deleted */
+
+	    public:
 		/**
 		 * A requirement from one subjob that [a subjob of] another
 		 * job completete successfully.
 		 */
 		struct Requirement {
-			Subjob *on;    /**< on which job is the requirement? */
+			Subjob *from;
+			Subjob *to;    /**< on which job is the requirement? */
 			bool required; /**< whether this *must* be met */
 			bool goal_required; /**< whether *must* be met for goal
 					     */
 
-			Requirement(Subjob *on, bool required,
+			/**
+			 * Create a requirement.
+			 */
+			Requirement(Subjob *from, Subjob *on, bool required,
 			    bool goal_required)
-			    : on(on)
+			    : from(from)
+			    , to(on)
 			    , required(required)
 			    , goal_required(goal_required) {};
+			/**
+			 * Delete a requirement.
+			 *
+			 * The requirement is removed from \p to's reqs_on.
+			 */
 			~Requirement();
 		};
 
@@ -226,10 +241,20 @@ class Transaction {
 			Subjob(Job *job, JobType type)
 			    : job(job)
 			    , type(type) {};
+			~Subjob();
 
 			/** Add a requirement on another subjob. */
 			void add_req(Subjob *on, bool required,
 			    bool goal_required);
+
+			/** Delete a requirement. As it calls Requirement's
+			 * destructor, this removes the requirement from reqs
+			 * and its to-node's reqs_on. */
+			void del_req(Requirement *req);
+
+			/** Fill \p dellist with all subjobs to be deleted to
+			 * remove this job (i.e. all requiring jobs). */
+			void get_del_list(std::vector<Subjob *> &dellist);
 		};
 
 		std::unordered_set<std::unique_ptr<Subjob>> subjobs;
@@ -243,6 +268,10 @@ class Transaction {
 			if (sj)
 				*sj = subjobs.back().get();
 		}
+
+		/** Fill \p dellist with all subjobs to be deleted to remove
+		 * this job (i.e. all requiring jobs). */
+		void get_del_list(std::vector<Subjob *> &dellist);
 
 		std::string describe() const;
 		void to_graph(std::ostream &out) const;
@@ -259,6 +288,7 @@ class Transaction {
 
     private:
 	bool is_cyclic(Job *origin, std::vector<Job *> &path);
+	bool try_remove_cycle(std::vector<Job *> &path);
 	bool verify_acyclic();
 
     public:

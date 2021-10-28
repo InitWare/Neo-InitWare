@@ -35,7 +35,7 @@ main(int argc, char *argv[])
 	c = app.m_sched.add_object(std::make_shared<Schedulable>("c"));
 
 	/* b requires/after a */
-	b->add_edge(Edge::kRequire, a);
+	b->add_edge(Edge::kWant, a);
 	b->add_edge(Edge::kAfter, a);
 
 	/* a requiredby/before b */
