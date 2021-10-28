@@ -17,4 +17,5 @@ if (DOXYGEN_FOUND)
 endif ()
 
 add_subdirectory(vendor/quickjs)
+add_subdirectory(lib/iwng_compat)
 add_subdirectory(cmd/schedulerd)

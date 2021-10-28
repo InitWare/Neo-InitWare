@@ -10,6 +10,8 @@
 //#include <unordered_set>
 #define unordered_set list
 
+#include "iwng_compat/misc_cxx.h"
+
 class Job;
 class Schedulable;
 
@@ -143,6 +145,10 @@ class Edge {
 	Edge(Type type, std::weak_ptr<Schedulable> from,
 	    std::shared_ptr<Schedulable> to);
 	~Edge();
+
+	std::string type_str() const;
+
+	void to_graph(std::ostream &out) const;
 };
 
 /* The base class of all entities which may be scheduled. */
@@ -166,6 +172,8 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 
 	Edge *add_edge(Edge::Type type, SPtr to);
 	template <typename T> T foreach_edge(T);
+
+	void to_graph(std::ostream &out) const;
 };
 
 /* A group of jobs in service of one job which defines the objective. */
@@ -230,7 +238,7 @@ class Transaction {
 			~Requirement();
 		};
 
-		struct Subjob {
+		struct Subjob : public Printable<Subjob> {
 			Job *job; /**< parent job */
 			JobType type;
 			std::unordered_set<std::unique_ptr<Requirement>>
@@ -242,6 +250,8 @@ class Transaction {
 			    : job(job)
 			    , type(type) {};
 			~Subjob();
+
+			std::ostream &print(std::ostream &os) const;
 
 			/** Add a requirement on another subjob. */
 			void add_req(Subjob *on, bool required,
@@ -312,6 +322,8 @@ class Scheduler {
 
     public:
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
+
+	void to_graph(std::ostream &out) const;
 };
 
 /*

@@ -3,31 +3,6 @@
 
 #include "scheduler.h"
 
-template <typename T> struct reversify {
-	T &iterable;
-};
-
-template <typename T>
-auto
-begin(reversify<T> w)
-{
-	return std::rbegin(w.iterable);
-}
-
-template <typename T>
-auto
-end(reversify<T> w)
-{
-	return std::rend(w.iterable);
-}
-
-template <typename T>
-reversify<T>
-reverse(T &&iterable)
-{
-	return { iterable };
-}
-
 class EdgeVisitor : public Edge::Visitor {
     public:
 	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
@@ -160,7 +135,8 @@ OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type == Edge::kAfter && !cyclic) {
 		if (tx.jobs.find(edge->to) != tx.jobs.end()) {
-			/* a job exists for this After edge - check for loop */
+			/* a job exists for this After edge - check for
+			 * loop */
 			if (tx.is_cyclic(tx.jobs[edge->to].get(), path))
 				cyclic = true;
 		}
@@ -170,7 +146,10 @@ OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 bool
 Transaction::is_cyclic(Job *job, std::vector<Job *> &path)
 {
-	bool cyclic;
+	bool cyclic = false;
+
+	std::cout << "Checking if " << job->object->m_name.c_str()
+		  << "is cyclic\n";
 
 	if (std::find(path.begin(), path.end(), job) != path.end())
 		return true;
@@ -219,13 +198,15 @@ Transaction::try_remove_cycle(std::vector<Job *> &path)
 			job->get_del_list(dellist);
 
 			for (auto job : dellist) {
-				printf("May delete subjob %s/%s\n",
-				    job->job->object->m_name.c_str(),
-				    type_str(job->type));
+				std::cout << "May delete subjob " << *job
+					  << "\n";
+
+				// job->job->subjobs.erase(
+				//   std::remove_if(job->job->subjobs.begin(),
+				//		job->job->subjobs.end(),
+				//			UniquePtrEq<Job::Subjob>(job)));
 			}
 		}
-
-		/* delete all jobs transitively requiring it */
 	}
 
 	return false;
@@ -297,11 +278,13 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 		    JobType::kStop, *this, sj, /* required */ true));
 	else if (among(op, { JobType::kReload, JobType::kTryReload }))
 		object->foreach_edge(EdgeVisitor(Edge::kPropagatesReloadTo,
-		    JobType::kTryReload, *this, sj, /* required */ true));
+		    JobType::kTryReload, *this, sj,
+		    /* required */ true));
 
 	if (among(op, { JobType::kRestart, JobType::kTryRestart }))
 		object->foreach_edge(EdgeVisitor(Edge::kPropagatesRestartTo,
-		    JobType::kTryRestart, *this, sj, /* required */ true));
+		    JobType::kTryRestart, *this, sj,
+		    /* required */ true));
 
 	return sj;
 }
@@ -354,10 +337,10 @@ Transaction::type_str(JobType type)
 		[JobType::kReload] = "reload",
 		[JobType::kRestart] = "restart",
 
+		[JobType::kTryStart] = "try_restart",
 		[JobType::kTryRestart] = "try_restart",
 		[JobType::kTryReload] = "try_reload",
 		[JobType::kReloadOrStart] = "reload_or_Start",
 	};
-
 	return types[type];
 }

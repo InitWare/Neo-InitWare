@@ -4,6 +4,7 @@
 #include <cassert>
 #include <fstream>
 #include <functional>
+#include <iostream>
 #include <sstream>
 
 #include "app/app.h"
@@ -36,19 +37,22 @@ main(int argc, char *argv[])
 
 	/* b requires/after a */
 	b->add_edge(Edge::kWant, a);
-	b->add_edge(Edge::kAfter, a);
 
 	/* a requiredby/before b */
-	a->add_edge(Edge::kPropagatesStopTo, b);
-	a->add_edge(Edge::kBefore, b);
-	a->add_edge(Edge::kAfter, c);
+	// a->add_edge(Edge::kPropagatesStopTo, b);
+	// a->add_edge(Edge::kBefore, b);
 
 	/* c requires/after b */
 	c->add_edge(Edge::kRequire, b);
+
+	a->add_edge(Edge::kAfter, c);
+	b->add_edge(Edge::kAfter, a);
 	c->add_edge(Edge::kAfter, b);
 
 	/* b requiredby c */
-	b->add_edge(Edge::kPropagatesStopTo, c);
+	//	b->add_edge(Edge::kPropagatesStopTo, c);
+
+	app.m_sched.to_graph(std::cout);
 
 	Transaction tx(c, Transaction::JobType::kStart);
 
