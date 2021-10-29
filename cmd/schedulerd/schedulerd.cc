@@ -49,9 +49,6 @@ main(int argc, char *argv[])
 	b->add_edge(Edge::kAfter, a);
 	c->add_edge(Edge::kAfter, b);
 
-	/* b requiredby c */
-	//	b->add_edge(Edge::kPropagatesStopTo, c);
-
 	app.m_sched.to_graph(std::cout);
 
 	Transaction tx(c, Transaction::JobType::kStart);

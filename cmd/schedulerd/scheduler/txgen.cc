@@ -5,32 +5,15 @@
 
 Transaction::Transaction(Schedulable::SPtr object, JobType op)
 {
-	submit_job(object, op, true);
-	verify_acyclic();
+	objective = submit_job(object, op, true);
+	to_graph(std::cout);
+	if (!verify_acyclic())
+		throw("Transaction is unresolveably cyclical");
 	to_graph(std::cout);
 }
 
 void
-Transaction::Job::get_del_list(std::vector<Subjob *> &dellist)
-{
-	if (deleting)
-		return;
-
-	deleting = true;
-
-	/* every subjob is deleted */
-	for (auto &subjob : subjobs) {
-		dellist.push_back(subjob.get());
-		for (auto &req_on : subjob->reqs_on) {
-			if (req_on->required) {
-				req_on->from->get_del_list(dellist);
-			}
-		}
-	}
-}
-
-void
-Transaction::Job::Subjob::get_del_list(std::vector<Subjob *> &dellist)
+Transaction::Job::get_del_list(std::vector<Job *> &dellist)
 {
 	dellist.push_back(this);
 	for (auto &req_on : reqs_on) {
@@ -40,7 +23,7 @@ Transaction::Job::Subjob::get_del_list(std::vector<Subjob *> &dellist)
 	}
 }
 
-Transaction::Job::Subjob::~Subjob()
+Transaction::Job::~Job()
 {
 	/** remove all requirements on this subjob from others' reqs */
 	for (auto req_on = reqs_on.begin(); req_on != reqs_on.end();) {
@@ -51,7 +34,7 @@ Transaction::Job::Subjob::~Subjob()
 }
 
 void
-Transaction::Job::Subjob::add_req(Subjob *on, bool required, bool goal_required)
+Transaction::Job::add_req(Job *on, bool required, bool goal_required)
 {
 	reqs.emplace_back(
 	    std::make_unique<Requirement>(this, on, required, goal_required));
@@ -59,10 +42,11 @@ Transaction::Job::Subjob::add_req(Subjob *on, bool required, bool goal_required)
 }
 
 void
-Transaction::Job::Subjob::del_req(Requirement *reqp)
+Transaction::Job::del_req(Requirement *reqp)
 {
 	for (auto &req : reqs) {
 		if (req.get() == reqp) {
+			req->to->reqs_on.remove(req.get());
 			reqs.remove(req);
 			return;
 		}
@@ -70,11 +54,28 @@ Transaction::Job::Subjob::del_req(Requirement *reqp)
 	throw("Requirement not found");
 }
 
+/** Delete all jobs on \p object. */
+void
+Transaction::del_jobs_for(Schedulable::SPtr object)
+{
+	std::vector<Job *> dellist;
+
+	for (auto rnge = jobs.equal_range(object); rnge.first != rnge.second;
+	     rnge.first++) {
+		auto &job = rnge.first->second;
+
+		job->get_del_list(dellist);
+	}
+
+	for (auto job : dellist)
+		multimap_erase_if(jobs, UniquePtrEq<Job>(job));
+}
+
 #pragma region Order loop detection &recovery
 
 class OrderVisitor : public Edge::Visitor {
     public:
-	OrderVisitor(Transaction &tx, std::vector<Transaction::Job *> &path,
+	OrderVisitor(Transaction &tx, std::vector<Schedulable::SPtr> &path,
 	    bool &cyclic)
 	    : tx(tx)
 	    , path(path)
@@ -84,7 +85,7 @@ class OrderVisitor : public Edge::Visitor {
 
     private:
 	Transaction &tx;
-	std::vector<Transaction::Job *> &path;
+	std::vector<Schedulable::SPtr> &path;
 	bool &cyclic;
 };
 
@@ -93,27 +94,25 @@ OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type == Edge::kAfter && !cyclic) {
 		if (tx.jobs.find(edge->to) != tx.jobs.end()) {
-			/* a job exists for this After edge - check for
-			 * loop */
-			if (tx.is_cyclic(tx.jobs[edge->to].get(), path))
+			/* job(s) exist for this After edge - check for loop */
+			if (tx.is_cyclic(edge->to, path))
 				cyclic = true;
 		}
 	}
 }
 
 bool
-Transaction::is_cyclic(Job *job, std::vector<Job *> &path)
+Transaction::is_cyclic(Schedulable::SPtr job,
+    std::vector<Schedulable::SPtr> &path)
 {
 	bool cyclic = false;
-
-	std::cout << "Checking if " << job->object->m_name.c_str()
-		  << "is cyclic\n";
 
 	if (std::find(path.begin(), path.end(), job) != path.end())
 		return true;
 
 	path.push_back(job);
-	job->object->foreach_edge(OrderVisitor(*this, path, cyclic));
+	job->foreach_edge(OrderVisitor(*this, path, cyclic));
+
 	if (!cyclic)
 		path.pop_back();
 
@@ -121,48 +120,26 @@ Transaction::is_cyclic(Job *job, std::vector<Job *> &path)
 }
 
 bool
-Transaction::try_remove_cycle(std::vector<Job *> &path)
+Transaction::object_jobs_required(Schedulable::SPtr object)
 {
-	for (auto &job : reverse(path)) {
-		bool essential = false;
+	for (auto rnge = jobs.equal_range(object); rnge.first != rnge.second;
+	     rnge.first++) {
+		auto job = rnge.first->second.get();
 
-		if (job == objective->job) {
-			printf("Not deleting job on %s as it's the goal\n",
-			    job->object->m_name.c_str());
-			continue;
+		if (job == objective) {
+			std::cout << "not deleting " << *job
+				  << "; is objective\n";
+			return true;
 		}
 
-		for (auto &subjob : job->subjobs) {
-			for (auto req_on : subjob->reqs_on) {
-				if (req_on->goal_required) {
-					essential = true;
-					break;
-				}
-			}
+		for (auto req_on : job->reqs_on) {
+			if (req_on->goal_required) {
+				std::cout
+				    << "not deleting " << *job
+				    << "; is required by goal-essential job "
+				    << *req_on->from << "\n";
 
-			if (essential)
-				break;
-		}
-
-		if (essential) {
-			printf("Can't delete jobs on %s as essential to goal\n",
-			    job->object->m_name.c_str());
-		} else {
-			std::vector<Job::Subjob *> dellist;
-
-			printf(
-			    "Can delete jobs on %s as nonessential to goal\n",
-			    job->object->m_name.c_str());
-			job->get_del_list(dellist);
-
-			for (auto job : dellist) {
-				std::cout << "May delete subjob " << *job
-					  << "\n";
-
-				// job->job->subjobs.erase(
-				//   std::remove_if(job->job->subjobs.begin(),
-				//		job->job->subjobs.end(),
-				//			UniquePtrEq<Job::Subjob>(job)));
+				return true;
 			}
 		}
 	}
@@ -171,21 +148,43 @@ Transaction::try_remove_cycle(std::vector<Job *> &path)
 }
 
 bool
-Transaction::verify_acyclic()
+Transaction::try_remove_cycle(std::vector<Schedulable::SPtr> &path)
 {
-	for (auto &job : jobs) {
-		std::vector<Transaction::Job *> path;
-		if (is_cyclic(job.second.get(), path)) {
-			printf("CYCLE DETECTED:\n");
-			for (auto &job2 : path) {
-				printf("%s -> ", job2->object->m_name.c_str());
-			}
-			printf("%s\n", path.front()->object->m_name.c_str());
-			try_remove_cycle(path);
+	for (auto &job : reverse(path)) {
+		bool essential = false;
+
+		if (!object_jobs_required(job)) {
+			std::cout << "Cycle resolved: deleting jobs on "
+				  << job->m_name
+				  << " as non-essential to goal.\n";
+			del_jobs_for(job);
 			return true;
 		}
 	}
+
+	std::cout << "Cycle unresolveable.";
+
 	return false;
+}
+
+bool
+Transaction::verify_acyclic()
+{
+restart:
+	for (auto &job : jobs) {
+		std::vector<Schedulable::SPtr> path;
+		if (is_cyclic(job.second->object, path)) {
+			printf("CYCLE DETECTED:\n");
+			for (auto &obj : path)
+				printf("%s -> ", obj->m_name.c_str());
+			printf("%s\n", path.front()->m_name.c_str());
+			if (try_remove_cycle(path))
+				goto restart; /* iterator invalidated */
+			else
+				return false;
+		}
+	}
+	return true;
 }
 
 #pragma endregion
@@ -195,7 +194,7 @@ Transaction::verify_acyclic()
 class EdgeVisitor : public Edge::Visitor {
     public:
 	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
-	    Transaction::Job::Subjob *requirer, bool is_required)
+	    Transaction::Job *requirer, bool is_required)
 	    : type(type)
 	    , op(op)
 	    , tx(tx)
@@ -210,7 +209,7 @@ class EdgeVisitor : public Edge::Visitor {
 	Edge::Type type;
 	Transaction::JobType op;
 	Transaction &tx;
-	Transaction::Job::Subjob *requirer;
+	Transaction::Job *requirer;
 	bool is_required;
 };
 
@@ -218,39 +217,40 @@ void
 EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type & type) {
-		Transaction::Job::Subjob *sj = tx.submit_job(edge->to, op);
-		requirer->add_req(sj, is_required,
-		    (tx.objective == requirer) && is_required);
+		bool goal_required = (requirer->goal_required) && is_required;
+		Transaction::Job *sj = tx.submit_job(edge->to, op,
+		    goal_required);
+
+		requirer->add_req(sj, is_required, goal_required);
 	}
 }
 
-Transaction::Job::Subjob *
-Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
+Transaction::Job *
+Transaction::submit_job(Schedulable::SPtr object, JobType op,
+    bool goal_required)
 {
-	Job::Subjob *sj = NULL; /* newly created or existing subjob */
-	bool exists = false;	/* whether the subjob already exists */
+	Job *sj = NULL;	     /* newly created or existing subjob */
+	bool exists = false; /* whether the subjob already exists */
 
 	if (jobs.find(object) != jobs.end()) {
-		std::unique_ptr<Job> &job = jobs[object];
-
-		for (auto &subjob : job->subjobs) {
-			if (subjob->type == op) {
-				sj = subjob.get(); /* use existing
-						      subjob */
-				exists = true;
+		for (auto rnge = jobs.equal_range(object);
+		     rnge.first != rnge.second; rnge.first++) {
+			if (rnge.second->second->type == op) {
+				sj = rnge.second->second.get();
+				break;
 			}
 		}
-
-		if (!sj) /* create new subjob of existing job */
-			job->subjobs.emplace_back(
-			    std::make_unique<Job::Subjob>(job.get(), op));
 	}
 
-	if (!sj) /* create a new job with subjob */
-		jobs[object] = std::make_unique<Job>(object, op, &sj);
+	if (!sj) /* must create a new job */
+	{
+		sj = jobs.insert(std::make_pair(object,
+				     std::make_unique<Job>(object, op)))
+			 ->second.get();
+	}
 
-	if (is_goal)
-		objective = sj;
+	if (goal_required)
+		sj->goal_required = true;
 
 	if (exists) /* deps will already have been added */
 		return sj;
@@ -272,13 +272,11 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 		    JobType::kStop, *this, sj, /* required */ true));
 	else if (among(op, { JobType::kReload, JobType::kTryReload }))
 		object->foreach_edge(EdgeVisitor(Edge::kPropagatesReloadTo,
-		    JobType::kTryReload, *this, sj,
-		    /* required */ true));
+		    JobType::kTryReload, *this, sj, /* required */ true));
 
 	if (among(op, { JobType::kRestart, JobType::kTryRestart }))
 		object->foreach_edge(EdgeVisitor(Edge::kPropagatesRestartTo,
-		    JobType::kTryRestart, *this, sj,
-		    /* required */ true));
+		    JobType::kTryRestart, *this, sj, /* required */ true));
 
 	return sj;
 }
@@ -288,21 +286,16 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 #pragma region Visualisation
 
 void
-Transaction::Job::to_graph(std::ostream &out) const
+Transaction::Job::to_graph(std::ostream &out, bool edges) const
 {
-	out << "subgraph cluster_" + object->m_name + " {\n";
-	out << "label=\"" + object->m_name + "\";\n";
-	out << "color=lightgrey;\n";
-	for (auto &sub : subjobs) {
-		std::string nodename = object->m_name + type_str(sub->type);
-		out << nodename + "[label=\"" + type_str(sub->type) + "\"];\n";
-	}
-	out << "}\n";
+	std::string nodename = object->m_name + type_str(type);
 
-	for (auto &sub : subjobs) {
-		std::string nodename = object->m_name + type_str(sub->type);
-		for (auto &req : sub->reqs) {
-			std::string to_nodename = req->to->job->object->m_name +
+	if (!edges) {
+		out << nodename + "[label=\"" << *this << "\"];\n";
+	} else {
+		std::string nodename = object->m_name + type_str(type);
+		for (auto &req : reqs) {
+			std::string to_nodename = req->to->object->m_name +
 			    type_str(req->to->type);
 			out << nodename + " -> " + to_nodename + " ";
 			out << "[label=\"req=" + std::to_string(req->required);
@@ -311,17 +304,34 @@ Transaction::Job::to_graph(std::ostream &out) const
 			out << ";\n";
 		}
 	}
-
-	out << "\n";
 }
 
 void
 Transaction::to_graph(std::ostream &out) const
 {
+	Schedulable *obj = nullptr;
 	out << "digraph TX {\n";
 	out << "graph [compound=true];\n";
+
+	for (auto &job : jobs) {
+		if (job.first.get() != obj) {
+			if (obj != NULL)
+				out << "}\n"; /* terminate previous subgraph */
+
+			obj = job.first.get();
+			out << "subgraph cluster_" + obj->m_name + " {\n";
+			out << "label=\"" + obj->m_name + "\";\n";
+			out << "color=lightgrey;\n";
+		}
+
+		job.second->to_graph(out, false);
+	}
+	out << "}\n"; /* terminate final subgraph */
+
+	/* now output edges */
 	for (auto &job : jobs)
-		job.second->to_graph(out);
+		job.second->to_graph(out, true);
+
 	out << "}\n";
 }
 

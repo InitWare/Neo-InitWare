@@ -6,6 +6,7 @@
 #define MISC_CXX_H_
 
 #include <algorithm>
+#include <map>
 #include <memory>
 
 /** Functor to check if an std::unique_ptr<T> is equal to a pointer val. */
@@ -43,8 +44,20 @@ among(const T &variable, std::initializer_list<T> values)
 	    std::end(values));
 }
 
-/* template implementations */
+/** To erase from a multimap if a predicate is satisfied. */
+template <typename MapT, typename PredT>
+void
+multimap_erase_if(MapT &map, PredT eq)
+{
+	for (auto it = map.begin(); it != map.end();) {
+		if (eq(it->second))
+			it = map.erase(it);
+		else
+			it++;
+	}
+}
 
+/* template implementations */
 template <typename T>
 bool
 UniquePtrEq<T>::operator()(std::unique_ptr<T> &ptr)

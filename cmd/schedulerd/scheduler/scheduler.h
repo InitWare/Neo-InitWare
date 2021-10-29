@@ -198,25 +198,18 @@ class Transaction {
 
     protected:
 	/**
-	 * A Job is set of state-changing and/or state-querying tasks for a
-	 * Schedulable object. During a transaction's formation it may
-	 * consist of multiple subjobs. These subjobs must all be mergeable
-	 * or transaction generation will fail.
+	 * A Job is a state-changing and/or state-querying task for a
+	 * Schedulable object.
 	 */
-	struct Job {
-		struct Subjob;
-
-	    private:
-		bool deleting = false; /* whether being deleted */
-
+	struct Job : public Printable<Job> {
 	    public:
 		/**
 		 * A requirement from one subjob that [a subjob of] another
 		 * job completete successfully.
 		 */
 		struct Requirement {
-			Subjob *from;
-			Subjob *to;    /**< on which job is the requirement? */
+			Job *from;
+			Job *to;       /**< on which job is the requirement? */
 			bool required; /**< whether this *must* be met */
 			bool goal_required; /**< whether *must* be met for goal
 					     */
@@ -224,7 +217,7 @@ class Transaction {
 			/**
 			 * Create a requirement.
 			 */
-			Requirement(Subjob *from, Subjob *on, bool required,
+			Requirement(Job *from, Job *on, bool required,
 			    bool goal_required)
 			    : from(from)
 			    , to(on)
@@ -238,68 +231,58 @@ class Transaction {
 			~Requirement();
 		};
 
-		struct Subjob : public Printable<Subjob> {
-			Job *job; /**< parent job */
-			JobType type;
-			std::unordered_set<std::unique_ptr<Requirement>>
-			    reqs; /**< requirements to other subjobs */
-			std::unordered_set<Requirement *>
-			    reqs_on; /**< requirements on this subjob */
-
-			Subjob(Job *job, JobType type)
-			    : job(job)
-			    , type(type) {};
-			~Subjob();
-
-			std::ostream &print(std::ostream &os) const;
-
-			/** Add a requirement on another subjob. */
-			void add_req(Subjob *on, bool required,
-			    bool goal_required);
-
-			/** Delete a requirement. As it calls Requirement's
-			 * destructor, this removes the requirement from reqs
-			 * and its to-node's reqs_on. */
-			void del_req(Requirement *req);
-
-			/** Fill \p dellist with all subjobs to be deleted to
-			 * remove this job (i.e. all requiring jobs). */
-			void get_del_list(std::vector<Subjob *> &dellist);
-		};
-
-		std::unordered_set<std::unique_ptr<Subjob>> subjobs;
 		Schedulable::SPtr object; /*< object on which to operate */
+		JobType type;
+		std::unordered_set<std::unique_ptr<Requirement>>
+		    reqs; /**< requirements to other jobs */
+		std::unordered_set<Requirement *>
+		    reqs_on; /**< requirements on this job */
+		bool goal_required = false;
 
-		Job(Schedulable::SPtr object, JobType type, Subjob **sj = NULL)
+		Job(Schedulable::SPtr object, JobType type)
 		    : object(object)
+		    , type(type)
 		{
-			subjobs.emplace_back(
-			    std::make_unique<Subjob>(this, type));
-			if (sj)
-				*sj = subjobs.back().get();
 		}
+		~Job();
 
-		/** Fill \p dellist with all subjobs to be deleted to remove
-		 * this job (i.e. all requiring jobs). */
-		void get_del_list(std::vector<Subjob *> &dellist);
+		/** Add a requirement on another subjob. */
+		void add_req(Job *on, bool required, bool goal_required);
 
-		std::string describe() const;
-		void to_graph(std::ostream &out) const;
+		/** Delete a requirement. As it calls Requirement's
+		 * destructor, this removes the requirement from reqs
+		 * and its to-node's reqs_on. */
+		void del_req(Requirement *req);
+
+		/** Fill \p dellist with all jobs to be deleted to
+		 * remove this job (i.e. all requiring jobs). */
+		void get_del_list(std::vector<Job *> &dellist);
+
+		void to_graph(std::ostream &out, bool edges) const;
+
+		std::ostream &print(std::ostream &os) const;
 	};
 
-	std::map<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
-	Job::Subjob *objective; /**< the job this tx aims to achieve */
+	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
+	Job *objective; /**< the job this tx aims to achieve */
 
 	/**
 	 * Add a new job including all of its dependencies.
 	 */
-	Job::Subjob *submit_job(Schedulable::SPtr object, JobType op,
+	Job *submit_job(Schedulable::SPtr object, JobType op,
 	    bool is_goal = false);
 
     private:
-	bool is_cyclic(Job *origin, std::vector<Job *> &path);
-	bool try_remove_cycle(std::vector<Job *> &path);
+	bool is_cyclic(Schedulable::SPtr origin,
+	    std::vector<Schedulable::SPtr> &path);
+	/** Are all jobs on \p object required for the goal? */
+	bool object_jobs_required(Schedulable::SPtr object);
+	/** Try to find an object for which removing all jobs will end loop. */
+	bool try_remove_cycle(std::vector<Schedulable::SPtr> &path);
 	bool verify_acyclic();
+
+	/** Delete all jobs on \p object. Jobs requiring these also deleted. */
+	void del_jobs_for(Schedulable::SPtr object);
 
     public:
 	Transaction(Schedulable::SPtr object, JobType op);
