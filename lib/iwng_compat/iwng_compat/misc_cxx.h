@@ -5,6 +5,7 @@
 #ifndef MISC_CXX_H_
 #define MISC_CXX_H_
 
+#include <algorithm>
 #include <memory>
 
 /** Functor to check if an std::unique_ptr<T> is equal to a pointer val. */
@@ -32,6 +33,15 @@ template <typename T> class Printable {
 		return t.print(os);
 	};
 };
+
+/** To check whether a value is one of a set of values. */
+template <typename T>
+bool
+among(const T &variable, std::initializer_list<T> values)
+{
+	return (std::find(std::begin(values), std::end(values), variable) !=
+	    std::end(values));
+}
 
 /* template implementations */
 

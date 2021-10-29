@@ -3,46 +3,6 @@
 
 #include "scheduler.h"
 
-class EdgeVisitor : public Edge::Visitor {
-    public:
-	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
-	    Transaction::Job::Subjob *requirer, bool is_required)
-	    : type(type)
-	    , op(op)
-	    , tx(tx)
-	    , requirer(requirer)
-	    , is_required(is_required)
-	{
-	}
-
-	void operator()(std::unique_ptr<Edge> &edge);
-
-    private:
-	Edge::Type type;
-	Transaction::JobType op;
-	Transaction &tx;
-	Transaction::Job::Subjob *requirer;
-	bool is_required;
-};
-
-void
-EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
-{
-	if (edge->type & type) {
-		Transaction::Job::Subjob *sj = tx.submit_job(edge->to, op);
-		requirer->add_req(sj, is_required,
-		    (tx.objective == requirer) && is_required);
-	}
-}
-
-template <typename T>
-bool
-among(const T &variable, std::initializer_list<T> values)
-{
-	return (std::find(std::begin(values), std::end(values), variable) !=
-	    std::end(values));
-}
-
 Transaction::Transaction(Schedulable::SPtr object, JobType op)
 {
 	submit_job(object, op, true);
@@ -110,9 +70,7 @@ Transaction::Job::Subjob::del_req(Requirement *reqp)
 	throw("Requirement not found");
 }
 
-/*
- * loop detection
- */
+#pragma region Order loop detection &recovery
 
 class OrderVisitor : public Edge::Visitor {
     public:
@@ -230,6 +188,42 @@ Transaction::verify_acyclic()
 	return false;
 }
 
+#pragma endregion
+
+#pragma region TX Generation
+
+class EdgeVisitor : public Edge::Visitor {
+    public:
+	EdgeVisitor(Edge::Type type, Transaction::JobType op, Transaction &tx,
+	    Transaction::Job::Subjob *requirer, bool is_required)
+	    : type(type)
+	    , op(op)
+	    , tx(tx)
+	    , requirer(requirer)
+	    , is_required(is_required)
+	{
+	}
+
+	void operator()(std::unique_ptr<Edge> &edge);
+
+    private:
+	Edge::Type type;
+	Transaction::JobType op;
+	Transaction &tx;
+	Transaction::Job::Subjob *requirer;
+	bool is_required;
+};
+
+void
+EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
+{
+	if (edge->type & type) {
+		Transaction::Job::Subjob *sj = tx.submit_job(edge->to, op);
+		requirer->add_req(sj, is_required,
+		    (tx.objective == requirer) && is_required);
+	}
+}
+
 Transaction::Job::Subjob *
 Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 {
@@ -289,6 +283,10 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op, bool is_goal)
 	return sj;
 }
 
+#pragma endregion
+
+#pragma region Visualisation
+
 void
 Transaction::Job::to_graph(std::ostream &out) const
 {
@@ -326,6 +324,8 @@ Transaction::to_graph(std::ostream &out) const
 		job.second->to_graph(out);
 	out << "}\n";
 }
+
+#pragma endregion
 
 const char *
 Transaction::type_str(JobType type)
