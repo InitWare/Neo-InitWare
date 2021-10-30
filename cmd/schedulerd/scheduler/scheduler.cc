@@ -1,5 +1,7 @@
+#include <cassert>
 #include <iostream>
 
+#include "../restarters/restarter.h"
 #include "scheduler.h"
 
 Edge::Edge(Type type, Schedulable::WPtr from, Schedulable::SPtr to)
@@ -30,7 +32,51 @@ Scheduler::add_object(Schedulable::SPtr obj)
 	return obj;
 }
 
-/* Graph output */
+bool
+Scheduler::job_runnable(std::unique_ptr<Transaction::Job> &job)
+{
+	for (auto &dep : job->object->edges) {
+		Transaction::Job *job2;
+
+		if (!(dep->type & Edge::kAfter))
+			continue;
+		else if ((job2 = transactions.front()->job_for(dep->to)) !=
+			NULL &&
+		    job->after_order(job2) == 1) {
+			std::cout << "Job " << *job << " must wait for "
+				  << *job2 << " to complete\n";
+			return false;
+		}
+	}
+
+	return true;
+}
+
+int
+Scheduler::enqueue_leaves(Transaction *tx)
+{
+	for (auto &it : tx->jobs) {
+		auto &job = it.second;
+
+		if (job_runnable(job)) {
+			std::cout << *job << " may run\n";
+			/*assert(job->object->restarter != nullptr);
+			job->object->restarter->start_job(job->object,
+			    job->type);*/
+		}
+	}
+
+	return 0;
+}
+
+bool
+Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
+{
+	transactions.emplace(std::make_unique<Transaction>(object, op));
+	enqueue_leaves(transactions.front().get());
+}
+
+#pragma region Graph output
 void
 Edge::to_graph(std::ostream &out) const
 {
@@ -91,4 +137,27 @@ Edge::type_str() const
 	}
 
 	return std::move(res);
+}
+
+#pragma endregion
+
+std::string &
+Schedulable::state_str(State &state)
+{
+	/* clang-format off */
+	static std::map<State, std::string> strs = {
+		{ kUninitialised, "Uninitialised" },
+		{ kOffline,	"Offline" },
+		{ kStarting,	"Starting" },
+		{ kOnline,	"Online" },
+		{ kStopping,	"Stopping" },
+		{ kMaintenance,	"Maintenance" },
+		{ kMax,		"<invalid>" },
+	};
+	/* clang-format on */
+
+	if (strs.find(state) == strs.end())
+		state = kMax;
+
+	return strs[state];
 }

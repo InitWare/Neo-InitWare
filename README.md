@@ -83,7 +83,7 @@ stop a particular object, to query any object's status, or to shut down the
 service manager. Any request made over the management interface must be
 authorised by the Reference Monitor before the action can be carried out.
 
-#### Object Graph
+#### Schedulable Object Graph
 
 All objects in the system are maintained in an object graph. This graph
 maintains a description of each object sufficient for the other components to

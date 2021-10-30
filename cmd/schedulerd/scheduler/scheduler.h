@@ -7,13 +7,13 @@
 #include <memory>
 #include <queue>
 #include <string>
-//#include <unordered_set>
 #define unordered_set list
 
 #include "iwng_compat/misc_cxx.h"
 
 class Job;
 class Schedulable;
+class Restarter;
 
 #define BITFLAG(n) (1 << n)
 
@@ -158,14 +158,28 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	friend class Transaction;
 	friend class EdgeVisitor;
 
+    public:
+	enum State {
+		kUninitialised, /**< not [yet] loaded */
+		kOffline,	/**< not up */
+		kStarting,	/**< going up */
+		kOnline,	/**< up */
+		kStopping,	/**< going down */
+		kMaintenance,	/**< error occurred */
+		kMax,
+	};
+
     protected:
 	std::string m_name;
 	std::list<std::unique_ptr<Edge>> edges; /**< edges from this node */
 	std::list<Edge *> edges_to;		/**< edges to this node */
+	Restarter *restarter;
 
     public:
 	typedef std::weak_ptr<Schedulable> WPtr;
 	typedef std::shared_ptr<Schedulable> SPtr;
+
+	State state = kUninitialised;
 
 	Schedulable(std::string name)
 	    : m_name(name) {};
@@ -174,12 +188,14 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	template <typename T> T foreach_edge(T);
 
 	void to_graph(std::ostream &out) const;
+	std::string &state_str(State &state);
 };
 
 /* A group of jobs in service of one job which defines the objective. */
 class Transaction {
 	friend class EdgeVisitor;
 	friend class OrderVisitor;
+	friend class Scheduler;
 
     public:
 	enum JobType {
@@ -196,7 +212,6 @@ class Transaction {
 		kReloadOrStart, /**< reload if up, otherwise start */
 	};
 
-    protected:
 	/**
 	 * A Job is a state-changing and/or state-querying task for a
 	 * Schedulable object.
@@ -258,11 +273,20 @@ class Transaction {
 		 * remove this job (i.e. all requiring jobs). */
 		void get_del_list(std::vector<Job *> &dellist);
 
-		void to_graph(std::ostream &out, bool edges) const;
+		/**
+		 * How should this job be ordered with respect to \p other given
+		 * this job has a kAfter dependency on that job?
+		 *
+		 * @retval -1 This should run before \p other
+		 * @retval 1 \p other should run before this.
+		 */
+		int after_order(Job *other);
 
+		void to_graph(std::ostream &out, bool edges) const;
 		std::ostream &print(std::ostream &os) const;
 	};
 
+    protected:
 	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
 	Job *objective; /**< the job this tx aims to achieve */
 
@@ -277,15 +301,20 @@ class Transaction {
 	    std::vector<Schedulable::SPtr> &path);
 	/** Are all jobs on \p object required for the goal? */
 	bool object_jobs_required(Schedulable::SPtr object);
-	/** Try to find an object for which removing all jobs will end loop. */
+	/** Try to find an object for which removing all jobs will end
+	 * loop. */
 	bool try_remove_cycle(std::vector<Schedulable::SPtr> &path);
 	bool verify_acyclic();
 
-	/** Delete all jobs on \p object. Jobs requiring these also deleted. */
+	/** Delete all jobs on \p object. Jobs requiring these also
+	 * deleted. */
 	void del_jobs_for(Schedulable::SPtr object);
 
     public:
 	Transaction(Schedulable::SPtr object, JobType op);
+
+	/** First job (if any) for object. */
+	Job *job_for(Schedulable::SPtr object);
 
 	static const char *type_str(JobType type);
 	void to_graph(std::ostream &out) const;
@@ -304,7 +333,18 @@ class Scheduler {
 	std::queue<std::unique_ptr<Transaction>> transactions;
 
     public:
+	/** Enqueue the set of leaf jobs ready to start immediately. */
+	int enqueue_leaves(Transaction *tx);
+
+	/**
+	 * Is this job ready to run? Namely, are there any jobs pending in the
+	 * currently-running transaction which must come before it?
+	 */
+	bool job_runnable(std::unique_ptr<Transaction::Job> &job);
+
+    public:
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
+	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
 
 	void to_graph(std::ostream &out) const;
 };

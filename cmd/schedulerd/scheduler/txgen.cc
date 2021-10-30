@@ -33,6 +33,11 @@ Transaction::Job::~Job()
 	}
 }
 
+Transaction::Job::Requirement::~Requirement()
+{
+	to->reqs_on.remove(this);
+}
+
 void
 Transaction::Job::add_req(Job *on, bool required, bool goal_required)
 {
@@ -54,6 +59,15 @@ Transaction::Job::del_req(Requirement *reqp)
 	throw("Requirement not found");
 }
 
+int
+Transaction::Job::after_order(Job *other)
+{
+	if (among(other->type, { kStop, kRestart }))
+		return -1; /* stop/restart jobs have reverse ordering */
+	else
+		return 1; /* ordinary ordering for other job types */
+}
+
 /** Delete all jobs on \p object. */
 void
 Transaction::del_jobs_for(Schedulable::SPtr object)
@@ -69,6 +83,13 @@ Transaction::del_jobs_for(Schedulable::SPtr object)
 
 	for (auto job : dellist)
 		multimap_erase_if(jobs, UniquePtrEq<Job>(job));
+}
+
+Transaction::Job *
+Transaction::job_for(Schedulable::SPtr object)
+{
+	auto it = jobs.find(object);
+	return it == jobs.end() ? nullptr : it->second.get();
 }
 
 #pragma region Order loop detection &recovery
@@ -92,7 +113,7 @@ class OrderVisitor : public Edge::Visitor {
 void
 OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
-	if (edge->type == Edge::kAfter && !cyclic) {
+	if (edge->type & Edge::kAfter && !cyclic) {
 		if (tx.jobs.find(edge->to) != tx.jobs.end()) {
 			/* job(s) exist for this After edge - check for loop */
 			if (tx.is_cyclic(edge->to, path))
