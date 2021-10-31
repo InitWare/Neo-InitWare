@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "../js/js.h"
+#include "../restarters/restarter.h"
 #include "../scheduler/scheduler.h"
 
 #define log_trace(...)
@@ -53,6 +54,8 @@ class App {
 	int m_kq;
 	JS m_js;
 	Scheduler m_sched;
+	/** Object type to restarter. */
+	std::unordered_map<std::string, std::shared_ptr<Restarter>> restarters;
 
 	App();
 

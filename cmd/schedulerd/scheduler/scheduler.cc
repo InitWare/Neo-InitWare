@@ -24,10 +24,23 @@ Schedulable::add_edge(Edge::Type type, SPtr to)
 	return edges.back().get();
 }
 
+bool
+Schedulable::Id::operator==(const Id &other) const
+{
+	return name == other.name;
+}
+
+bool
+Schedulable::Id::operator==(const Schedulable::SPtr &obj) const
+{
+	return name == obj->id.name;
+}
+
 Schedulable::SPtr
 Scheduler::add_object(Schedulable::SPtr obj)
 {
-	objects.emplace_back(obj);
+	assert(objects.find(obj->id) == objects.end());
+	objects[obj->id] = obj;
 
 	return obj;
 }
@@ -74,6 +87,7 @@ Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
 {
 	transactions.emplace(std::make_unique<Transaction>(object, op));
 	enqueue_leaves(transactions.front().get());
+	return true;
 }
 
 #pragma region Graph output
@@ -81,14 +95,14 @@ void
 Edge::to_graph(std::ostream &out) const
 {
 	auto p = from.lock();
-	out << p->m_name << " -> " << to->m_name;
+	out << p->id.name << " -> " << to->id.name;
 	out << "[label=\"" << type_str() << "\"];\n";
 }
 
 void
 Schedulable::to_graph(std::ostream &out) const
 {
-	out << m_name + ";\n";
+	out << id.name + ";\n";
 	for (auto &edge : edges_to)
 		edge->to_graph(out);
 }
@@ -98,7 +112,7 @@ Scheduler::to_graph(std::ostream &out) const
 {
 	out << "digraph sched {\n";
 	for (auto object : objects)
-		object->to_graph(out);
+		object.second->to_graph(out);
 	out << "}\n";
 }
 

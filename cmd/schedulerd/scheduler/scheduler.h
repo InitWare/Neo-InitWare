@@ -7,6 +7,7 @@
 #include <memory>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #define unordered_set list
 
 #include "iwng_compat/misc_cxx.h"
@@ -159,6 +160,26 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	friend class EdgeVisitor;
 
     public:
+	typedef std::weak_ptr<Schedulable> WPtr;
+	typedef std::shared_ptr<Schedulable> SPtr;
+
+	struct Id {
+		struct HashFn {
+			std::size_t operator()(const Schedulable::Id &id) const
+			{
+				return std::hash<std::string>()(id.name);
+			}
+		};
+
+		std::string name; /* full name of the object */
+
+		Id(std::string name)
+		    : name(name) {};
+
+		bool operator==(const Id &other) const;
+		bool operator==(const Schedulable::SPtr &obj) const;
+	};
+
 	enum State {
 		kUninitialised, /**< not [yet] loaded */
 		kOffline,	/**< not up */
@@ -170,19 +191,16 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	};
 
     protected:
-	std::string m_name;
+	Id id;
 	std::list<std::unique_ptr<Edge>> edges; /**< edges from this node */
 	std::list<Edge *> edges_to;		/**< edges to this node */
 	Restarter *restarter;
 
     public:
-	typedef std::weak_ptr<Schedulable> WPtr;
-	typedef std::shared_ptr<Schedulable> SPtr;
-
 	State state = kUninitialised;
 
 	Schedulable(std::string name)
-	    : m_name(name) {};
+	    : id(name) {};
 
 	Edge *add_edge(Edge::Type type, SPtr to);
 	template <typename T> T foreach_edge(T);
@@ -329,7 +347,9 @@ class Transaction {
  * first pending transaction.
  */
 class Scheduler {
-	std::unordered_set<Schedulable::SPtr> objects;
+	std::unordered_map<Schedulable::Id, Schedulable::SPtr,
+	    Schedulable::Id::HashFn>
+	    objects;
 	std::queue<std::unique_ptr<Transaction>> transactions;
 
     public:

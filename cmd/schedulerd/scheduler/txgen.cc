@@ -176,7 +176,7 @@ Transaction::try_remove_cycle(std::vector<Schedulable::SPtr> &path)
 
 		if (!object_jobs_required(job)) {
 			std::cout << "Cycle resolved: deleting jobs on "
-				  << job->m_name
+				  << job->id.name
 				  << " as non-essential to goal.\n";
 			del_jobs_for(job);
 			return true;
@@ -197,8 +197,8 @@ restart:
 		if (is_cyclic(job.second->object, path)) {
 			printf("CYCLE DETECTED:\n");
 			for (auto &obj : path)
-				printf("%s -> ", obj->m_name.c_str());
-			printf("%s\n", path.front()->m_name.c_str());
+				printf("%s -> ", obj->id.name.c_str());
+			printf("%s\n", path.front()->id.name.c_str());
 			if (try_remove_cycle(path))
 				goto restart; /* iterator invalidated */
 			else
@@ -309,14 +309,14 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op,
 void
 Transaction::Job::to_graph(std::ostream &out, bool edges) const
 {
-	std::string nodename = object->m_name + type_str(type);
+	std::string nodename = object->id.name + type_str(type);
 
 	if (!edges) {
 		out << nodename + "[label=\"" << *this << "\"];\n";
 	} else {
-		std::string nodename = object->m_name + type_str(type);
+		std::string nodename = object->id.name + type_str(type);
 		for (auto &req : reqs) {
-			std::string to_nodename = req->to->object->m_name +
+			std::string to_nodename = req->to->object->id.name +
 			    type_str(req->to->type);
 			out << nodename + " -> " + to_nodename + " ";
 			out << "[label=\"req=" + std::to_string(req->required);
@@ -340,8 +340,8 @@ Transaction::to_graph(std::ostream &out) const
 				out << "}\n"; /* terminate previous subgraph */
 
 			obj = job.first.get();
-			out << "subgraph cluster_" + obj->m_name + " {\n";
-			out << "label=\"" + obj->m_name + "\";\n";
+			out << "subgraph cluster_" + obj->id.name + " {\n";
+			out << "label=\"" + obj->id.name + "\";\n";
 			out << "color=lightgrey;\n";
 		}
 

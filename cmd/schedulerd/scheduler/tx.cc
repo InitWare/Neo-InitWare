@@ -6,6 +6,6 @@
 std::ostream &
 Transaction::Job::print(std::ostream &os) const
 {
-	os << object->m_name << "/" << type_str(type);
+	os << object->id.name << "/" << type_str(type);
 	return os;
 }
