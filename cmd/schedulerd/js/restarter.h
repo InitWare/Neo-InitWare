@@ -1,7 +1,7 @@
 #ifndef JS_RESTARTER_H_
 #define JS_RESTARTER_H_
 
-#include "../scheduler/restarter.h"
+#include "../restarters/restarter.h"
 
 class JSRestarter : public Restarter {
 	Scheduler &m_sched;

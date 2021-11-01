@@ -8,6 +8,7 @@
 #include "../js/js.h"
 #include "../restarters/restarter.h"
 #include "../scheduler/scheduler.h"
+#include "evloop.h"
 
 #define log_trace(...)
 #define log_dbg(...) printf(__VA_ARGS__)
@@ -18,16 +19,18 @@ struct kevent;
 class App {
 
     public:
-	typedef uintptr_t timerid_t;
+	typedef Evloop::timerid_t timerid_t;
 
     protected:
 	struct Timer {
-		typedef std::function<void(timerid_t)> callback_t;
+		typedef std::function<void(timerid_t, uintptr_t)> callback_t;
 
 		callback_t m_cb; //!< callback to invoke on timer elapse
+		uintptr_t m_udata;
 
-		Timer(callback_t cb)
-		    : m_cb(cb) {};
+		Timer(callback_t cb, uintptr_t udata = 0)
+		    : m_cb(cb)
+		    , m_udata(udata) {};
 	};
 
 	struct FD {
@@ -60,7 +63,8 @@ class App {
 	App();
 
 	/** Add a new timer. Returns 0 on failure, otherwise unique ID. */
-	timerid_t add_timer(bool recur, int ms, Timer::callback_t cb);
+	timerid_t add_timer(bool recur, int ms, Timer::callback_t cb,
+	    uintptr_t udata = 0);
 	int del_timer(timerid_t id);
 
 	int add_fd(int fd, int events, FD::callback_t cb);

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.9)
 project(InitWare-InitKit)
 
+set(CMAKE_CXX_STANDARD 17)
+
 include(FindPkgConfig)
 
 find_package(Doxygen)

@@ -1,6 +1,9 @@
 #include <cassert>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
+#include "../app/app.h"
 #include "../restarters/restarter.h"
 #include "scheduler.h"
 
@@ -45,9 +48,31 @@ Scheduler::add_object(Schedulable::SPtr obj)
 	return obj;
 }
 
-bool
-Scheduler::job_runnable(std::unique_ptr<Transaction::Job> &job)
+int
+Scheduler::job_run(Transaction::Job *job)
 {
+	std::cout << "Starting " << job->object->id.name << "\n";
+	running_jobs[job->id] = job;
+	app.restarters["target"]->start(job->id);
+	app.add_timer(false, 700 /* JOB TIMEOUT MSEC */,
+	    std::bind(&Scheduler::job_timeout_cb, this, std::placeholders::_1,
+		std::placeholders::_2),
+	    job->id);
+	return true;
+}
+
+void
+Scheduler::job_timeout_cb(Evloop::timerid_t id, uintptr_t udata)
+{
+	Transaction::Job::Id jid = udata;
+	job_complete(jid, Transaction::Job::State::kTimeout);
+}
+
+bool
+Scheduler::job_runnable(Transaction::Job *job)
+{
+	if (job->state != Transaction::Job::kAwaiting)
+		return false;
 	for (auto &dep : job->object->edges) {
 		Transaction::Job *job2;
 
@@ -58,7 +83,8 @@ Scheduler::job_runnable(std::unique_ptr<Transaction::Job> &job)
 		    job->after_order(job2) == 1) {
 			std::cout << "Job " << *job << " must wait for "
 				  << *job2 << " to complete\n";
-			return false;
+			if (job2->state != Transaction::Job::State::kSuccess)
+				return false;
 		}
 	}
 
@@ -69,13 +95,14 @@ int
 Scheduler::enqueue_leaves(Transaction *tx)
 {
 	for (auto &it : tx->jobs) {
-		auto &job = it.second;
+		auto job = it.second.get();
+
+		if (job->id == -1)
+			job->id = last_jobid++;
 
 		if (job_runnable(job)) {
-			std::cout << *job << " may run\n";
-			/*assert(job->object->restarter != nullptr);
-			job->object->restarter->start_job(job->object,
-			    job->type);*/
+			std::cout << *job << " is leaf, enqueueing\n";
+			job_run(job);
 		}
 	}
 
@@ -88,6 +115,80 @@ Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
 	transactions.emplace(std::make_unique<Transaction>(object, op));
 	enqueue_leaves(transactions.front().get());
 	return true;
+}
+
+#define ANSI_CLEAR "\x1B[0m"
+#define ANSI_HL_GREEN "\x1B[0;1;32m"
+#define ANSI_HL_YELLOW "\x1B[0;1;31m"
+#define ANSI_HL_RED "\x1B[0;1;33m"
+
+static struct {
+	std::string code, msg;
+} job_msg[Transaction::Job::State::kMax] = {
+	[Transaction::Job::State::kSuccess] = { ANSI_HL_GREEN, "  OK  " },
+	[Transaction::Job::State::kFailure] = { ANSI_HL_RED, " Fail " },
+	[Transaction::Job::State::kTimeout] = { ANSI_HL_RED, " Time " },
+	[Transaction::Job::State::kCancelled] = { ANSI_HL_GREEN, "Cancel" },
+};
+
+int
+Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
+{
+	auto &desc = job_msg[res];
+	std::ostringstream msg_col;
+	std::string code_col = "[" + desc.code + desc.msg + ANSI_CLEAR + "]";
+	bool succ = false;
+	auto &job = running_jobs[id];
+
+	switch (res) {
+	case Transaction::Job::State::kSuccess:
+		msg_col << "Started ";
+		succ = true;
+		break;
+
+	case Transaction::Job::State::kFailure:
+		msg_col << "Failed to start ";
+		break;
+
+	case Transaction::Job::State::kTimeout:
+		msg_col << "Timed out starting ";
+		break;
+
+	case Transaction::Job::State::kCancelled:
+		msg_col << "Cancelled starting ";
+		break;
+
+	default:
+		assert(!"unreached");
+	}
+
+	job->state = res;
+	msg_col << job->object->id.name;
+
+	std::cout << std::left << std::setw(67) << msg_col.str() << std::right
+		  << std::setw(12) << code_col << "\n";
+
+	for (auto &dep : job->object->edges_to) {
+		Transaction::Job *job2;
+
+		if (!(dep->type & Edge::kAfter))
+			continue;
+		else if ((job2 = transactions.front()->job_for(dep->to)) !=
+			NULL &&
+		    job_runnable(job2)) {
+			std::cout << "Job " << *job2 << " may run now that "
+				  << *job2 << " is complete\n";
+			job_run(job2);
+		}
+	}
+
+	return 0;
+}
+
+int
+Scheduler::object_set_state(Schedulable::Id &id, Schedulable::State state)
+{
+	objects[id]->state = state;
 }
 
 #pragma region Graph output

@@ -31,9 +31,12 @@ main(int argc, char *argv[])
 	Schedulable::SPtr b;
 	Schedulable::SPtr c;
 
-	a = app.m_sched.add_object(std::make_shared<Schedulable>("a"));
-	b = app.m_sched.add_object(std::make_shared<Schedulable>("b"));
-	c = app.m_sched.add_object(std::make_shared<Schedulable>("c"));
+	app.restarters["target"] = std::make_shared<TargetRestarter>(
+	    app.m_sched);
+
+	a = app.m_sched.add_object(std::make_shared<Schedulable>("a.target"));
+	b = app.m_sched.add_object(std::make_shared<Schedulable>("b.target"));
+	c = app.m_sched.add_object(std::make_shared<Schedulable>("c.target"));
 
 	a->add_edge(Edge::Type(Edge::kAfter), c);
 	b->add_edge(Edge::Type(Edge::kAfter | Edge::kWant), a);

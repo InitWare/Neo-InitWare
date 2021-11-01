@@ -5,13 +5,20 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <set>
 #include <string>
 #include <unordered_map>
-#define unordered_set list
+#include <unordered_set>
 
+#include "../app/evloop.h"
 #include "iwng_compat/misc_cxx.h"
 
+using std::nullopt;
+using std::optional;
+
+class App;
 class Job;
 class Schedulable;
 class Restarter;
@@ -228,6 +235,7 @@ class Transaction {
 		kTryRestart,	/**< restart if up, otherwise nop */
 		kTryReload,	/**< reload if up, otherwise nop */
 		kReloadOrStart, /**< reload if up, otherwise start */
+		kMax,
 	};
 
 	/**
@@ -236,6 +244,17 @@ class Transaction {
 	 */
 	struct Job : public Printable<Job> {
 	    public:
+		typedef int64_t Id;
+
+		enum State {
+			kAwaiting,
+			kSuccess,
+			kFailure,
+			kTimeout,
+			kCancelled,
+			kMax
+		};
+
 		/**
 		 * A requirement from one subjob that [a subjob of] another
 		 * job completete successfully.
@@ -271,6 +290,13 @@ class Transaction {
 		std::unordered_set<Requirement *>
 		    reqs_on; /**< requirements on this job */
 		bool goal_required = false;
+
+		/**
+		 * These are mainly of interest in jobs currently running.
+		 */
+		Id id = -1;
+		Evloop::timerid_t timer; /**< job timeout timer id */
+		State state = kAwaiting;
 
 		Job(Schedulable::SPtr object, JobType type)
 		    : object(object)
@@ -347,24 +373,42 @@ class Transaction {
  * first pending transaction.
  */
 class Scheduler {
+    protected:
+	App &app;
+
 	std::unordered_map<Schedulable::Id, Schedulable::SPtr,
 	    Schedulable::Id::HashFn>
 	    objects;
 	std::queue<std::unique_ptr<Transaction>> transactions;
+	std::unordered_map<Transaction::Job::Id, Transaction::Job *>
+	    running_jobs;
+	Transaction::Job::Id last_jobid = 0;
 
     public:
-	/** Enqueue the set of leaf jobs ready to start immediately. */
-	int enqueue_leaves(Transaction *tx);
-
+	/** Invoke restarter & places the job in the #running_jobs map. */
+	int job_run(Transaction::Job *job);
 	/**
 	 * Is this job ready to run? Namely, are there any jobs pending in the
 	 * currently-running transaction which must come before it?
 	 */
-	bool job_runnable(std::unique_ptr<Transaction::Job> &job);
+	bool job_runnable(Transaction::Job *job);
+	/** Called when a job has timed out. */
+	void job_timeout_cb(Evloop::timerid_t id, uintptr_t udata);
+
+	/** Enqueue the set of leaf jobs ready to start immediately. */
+	int enqueue_leaves(Transaction *tx);
 
     public:
+	Scheduler(App &app)
+	    : app(app) {};
+
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
 	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
+
+	std::optional<Transaction::Job *> job_for_id(Transaction::Job::Id id);
+	int job_complete(Transaction::Job::Id id, Transaction::Job::State res);
+
+	int object_set_state(Schedulable::Id &id, Schedulable::State state);
 
 	void to_graph(std::ostream &out) const;
 };

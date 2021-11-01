@@ -35,15 +35,17 @@ Transaction::Job::~Job()
 
 Transaction::Job::Requirement::~Requirement()
 {
-	to->reqs_on.remove(this);
+	to->reqs_on.erase(this);
 }
 
 void
 Transaction::Job::add_req(Job *on, bool required, bool goal_required)
 {
-	reqs.emplace_back(
-	    std::make_unique<Requirement>(this, on, required, goal_required));
-	on->reqs_on.emplace_back(reqs.back().get());
+	auto req = std::make_unique<Requirement>(this, on, required,
+	    goal_required);
+	auto reqp = req.get();
+	reqs.emplace(std::move(req));
+	on->reqs_on.emplace(reqp);
 }
 
 void
@@ -51,8 +53,8 @@ Transaction::Job::del_req(Requirement *reqp)
 {
 	for (auto &req : reqs) {
 		if (req.get() == reqp) {
-			req->to->reqs_on.remove(req.get());
-			reqs.remove(req);
+			req->to->reqs_on.erase(req.get());
+			reqs.erase(req);
 			return;
 		}
 	}

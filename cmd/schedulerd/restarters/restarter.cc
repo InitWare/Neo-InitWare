@@ -1,7 +1,16 @@
 #include "restarter.h"
 
 bool
-Restarter::start_job(Schedulable::SPtr &obj, Transaction::JobType type)
+TargetRestarter::start(Transaction::Job::Id id)
 {
-	return true;
+	sched.job_complete(id, Transaction::Job::kSuccess);
+	// sched.object_set_state(, Schedulable::State state)
+	return 0;
+}
+
+bool
+TargetRestarter::stop(Transaction::Job::Id id)
+{
+	sched.job_complete(id, Transaction::Job::kSuccess);
+	return 0;
 }

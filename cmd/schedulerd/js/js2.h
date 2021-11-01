@@ -36,7 +36,7 @@ struct JSTimer : public JSCXXClass<JSTimer> {
 	    JSValueConst *argv);
 
 	/* instance callbacks */
-	void app_cb(App::timerid_t id);
+	void app_cb(App::timerid_t id, uintptr_t udata);
 	void clear();
 	void finalizer();
 	void gc_mark(JSRuntime *rt, JS_MarkFunc *mark_func);

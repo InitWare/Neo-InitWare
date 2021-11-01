@@ -8,7 +8,7 @@
 JSClassID JSTimer::clsid;
 
 void
-JSTimer::app_cb(App::timerid_t id)
+JSTimer::app_cb(App::timerid_t id, uintptr_t udata)
 {
 	JSValue ret, func;
 
@@ -77,7 +77,8 @@ JSTimer::setTimeout(JSContext *ctx, JSValueConst this_val, int argc,
 		return JS_ThrowOutOfMemory(ctx);
 
 	id = js->m_app->add_timer(recurs, ms,
-	    std::bind(&JSTimer::app_cb, timer, std::placeholders::_1));
+	    std::bind(&JSTimer::app_cb, timer, std::placeholders::_1,
+		std::placeholders::_2));
 	if (id == 0) {
 		delete timer;
 		JS_FreeValue(ctx, obj);

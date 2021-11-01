@@ -5,13 +5,13 @@
 #include "app.h"
 
 App::timerid_t
-App::add_timer(bool recur, int ms, Timer::callback_t cb)
+App::add_timer(bool recur, int ms, Timer::callback_t cb, uintptr_t udata)
 {
 	Timer *timer;
 	struct kevent kev;
 	int ret;
 
-	m_timers.emplace_back(std::make_unique<Timer>(cb));
+	m_timers.emplace_back(std::make_unique<Timer>(cb, udata));
 	timer = m_timers.back().get();
 
 	EV_SET(&kev, (uintptr_t)timer, EVFILT_TIMER,
@@ -103,7 +103,7 @@ App::handle_timer(struct kevent *kev)
 	Timer *timer = (Timer *)kev->ident;
 
 	log_trace("Timer %lu elapsed\n", timer);
-	timer->m_cb((timerid_t)timer);
+	timer->m_cb((timerid_t)timer, timer->m_udata);
 }
 
 void
@@ -140,7 +140,6 @@ App::loop()
 				log_err("Unhandled KEvent filter!\n");
 			}
 		}
-		log_trace("Running pending jobs:\n");
 		m_js.run_pending_jobs();
 	}
 
@@ -149,6 +148,7 @@ App::loop()
 
 App::App()
     : m_js(this)
+    , m_sched(*this)
 {
 	m_kq = kqueue();
 }
