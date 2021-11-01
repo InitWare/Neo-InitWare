@@ -58,7 +58,7 @@ class App {
 	JS m_js;
 	Scheduler m_sched;
 	/** Object type to restarter. */
-	std::unordered_map<std::string, std::shared_ptr<Restarter>> restarters;
+	std::unordered_map<std::string, Restarter *> restarters;
 
 	App();
 

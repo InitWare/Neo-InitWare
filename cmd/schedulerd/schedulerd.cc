@@ -16,7 +16,9 @@ int
 main(int argc, char *argv[])
 {
 	App app;
-	/*std::ifstream t(argv[1]);
+
+#if 1
+	std::ifstream t(argv[1]);
 	std::stringstream buffer;
 	std::string fname(argv[1]);
 	std::string txt;
@@ -24,15 +26,15 @@ main(int argc, char *argv[])
 	buffer << t.rdbuf();
 	txt = buffer.str();
 
-	JS::eval(app.m_js.m_ctx, fname, txt, JS_EVAL_TYPE_MODULE);*/
+	JS::eval(app.m_js.m_ctx, fname, txt, JS_EVAL_TYPE_MODULE);
+#endif
 
 	//!! test code
 	Schedulable::SPtr a;
 	Schedulable::SPtr b;
 	Schedulable::SPtr c;
 
-	app.restarters["target"] = std::make_shared<TargetRestarter>(
-	    app.m_sched);
+	// app.restarters["target"] = new TargetRestarter(app.m_sched);
 
 	a = app.m_sched.add_object(std::make_shared<Schedulable>("a.target"));
 	b = app.m_sched.add_object(std::make_shared<Schedulable>("b.target"));

@@ -5,7 +5,6 @@
 #include <list>
 #include <map>
 #include <memory>
-#include <optional>
 #include <queue>
 #include <set>
 #include <string>
@@ -14,9 +13,6 @@
 
 #include "../app/evloop.h"
 #include "iwng_compat/misc_cxx.h"
-
-using std::nullopt;
-using std::optional;
 
 class App;
 class Job;
@@ -295,7 +291,7 @@ class Transaction {
 		 * These are mainly of interest in jobs currently running.
 		 */
 		Id id = -1;
-		Evloop::timerid_t timer; /**< job timeout timer id */
+		Evloop::timerid_t timer = 0; /**< job timeout timer id */
 		State state = kAwaiting;
 
 		Job(Schedulable::SPtr object, JobType type)
@@ -398,6 +394,8 @@ class Scheduler {
 	/** Enqueue the set of leaf jobs ready to start immediately. */
 	int enqueue_leaves(Transaction *tx);
 
+	void log_job_complete(Schedulable::Id id, Transaction::Job::State res);
+
     public:
 	Scheduler(App &app)
 	    : app(app) {};
@@ -405,7 +403,7 @@ class Scheduler {
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
 	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
 
-	std::optional<Transaction::Job *> job_for_id(Transaction::Job::Id id);
+	Transaction::Job *job_for_id(Transaction::Job::Id id);
 	int job_complete(Transaction::Job::Id id, Transaction::Job::State res);
 
 	int object_set_state(Schedulable::Id &id, Schedulable::State state);

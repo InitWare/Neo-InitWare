@@ -46,7 +46,7 @@ App::del_timer(timerid_t id)
 		}
 	}
 
-	log_dbg("Couldn't find timer of that ID\n");
+	log_dbg("Couldn't find timer of that ID %lu\n", id);
 	return -ENOENT;
 }
 

@@ -1,6 +1,7 @@
 
 #include "js2.h"
 #include "quickjs-libc.h"
+#include "restarter.h"
 
 std::vector<JSValue>
 argv_to_vec(JSContext *ctx, int argc, JSValueConst argv[])
@@ -32,6 +33,7 @@ JS::JS(App *app)
 	mod = JS_NewCModule(m_ctx, "@initware", mod_init);
 	JSTimer::mod_export(m_ctx, mod);
 	JSFD::mod_export(m_ctx, mod);
+	JSRestarter::mod_export(m_ctx, mod);
 
 	js_std_add_helpers(m_ctx, 0, NULL);
 }
@@ -41,6 +43,7 @@ JS::mod_init(JSContext *ctx, JSModuleDef *mod)
 {
 	JSTimer::mod_init(ctx, mod);
 	JSFD::mod_init(ctx, mod);
+	JSRestarter::mod_init(ctx, mod);
 
 	return 0;
 }

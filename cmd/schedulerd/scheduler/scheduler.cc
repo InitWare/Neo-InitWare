@@ -5,6 +5,7 @@
 
 #include "../app/app.h"
 #include "../restarters/restarter.h"
+#include "iwng_compat/misc.h"
 #include "scheduler.h"
 
 Edge::Edge(Type type, Schedulable::WPtr from, Schedulable::SPtr to)
@@ -53,11 +54,11 @@ Scheduler::job_run(Transaction::Job *job)
 {
 	std::cout << "Starting " << job->object->id.name << "\n";
 	running_jobs[job->id] = job;
-	app.restarters["target"]->start(job->id);
-	app.add_timer(false, 700 /* JOB TIMEOUT MSEC */,
+	job->timer = app.add_timer(false, 700 /* JOB TIMEOUT MSEC */,
 	    std::bind(&Scheduler::job_timeout_cb, this, std::placeholders::_1,
 		std::placeholders::_2),
 	    job->id);
+	app.restarters["target"]->start(job->id);
 	return true;
 }
 
@@ -65,6 +66,8 @@ void
 Scheduler::job_timeout_cb(Evloop::timerid_t id, uintptr_t udata)
 {
 	Transaction::Job::Id jid = udata;
+
+	running_jobs[jid]->timer = 0;
 	job_complete(jid, Transaction::Job::State::kTimeout);
 }
 
@@ -117,28 +120,84 @@ Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
 	return true;
 }
 
-#define ANSI_CLEAR "\x1B[0m"
-#define ANSI_HL_GREEN "\x1B[0;1;32m"
-#define ANSI_HL_YELLOW "\x1B[0;1;31m"
-#define ANSI_HL_RED "\x1B[0;1;33m"
+int
+Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
+{
+	auto job = running_jobs[id];
+
+	if (job->timer != 0)
+		app.del_timer(job->timer);
+	running_jobs.erase(id);
+	log_job_complete(job->object->id, res);
+	job->state = res;
+
+	if (res == Transaction::Job::State::kSuccess &&
+	    job->type == Transaction::JobType::kRestart) {
+		/* restart jobs are converted to start jobs on success */
+		job->type = Transaction::JobType::kStart;
+		job->state = Transaction::Job::kAwaiting;
+		if (job_runnable(job))
+			job_run(job);
+		goto start_others;
+	}
+
+	/*
+	 * TODO: We need to make a design decision. Should we go through all the
+	 * jobs with requirement edge to the completed job, and fail them if
+	 * they have req=1, or should we simply rely on PropagateStopTo
+	 * dependencies instead?
+	 */
+
+start_others:
+	/*
+	 * For each object which has an ordering edge to the object whose job
+	 * has now completed, we check if a job exists for that object
+	 * within the transaction; if there is, we check if the job is
+	 * runnable, and run it if so.
+	 */
+	for (auto &dep : job->object->edges_to) {
+		Transaction::Job *job2;
+
+		if (!(dep->type & Edge::kAfter))
+			continue;
+		else if ((job2 = transactions.front()->job_for(dep->to)) !=
+			NULL &&
+		    job_runnable(job2)) {
+			std::cout << "Job " << *job2 << " may run now that "
+				  << *job2 << " is complete\n";
+			job_run(job2);
+		}
+	}
+
+	return 0;
+}
+
+int
+Scheduler::object_set_state(Schedulable::Id &id, Schedulable::State state)
+{
+	objects[id]->state = state;
+	return 0;
+}
+
+#pragma region Logging
 
 static struct {
 	std::string code, msg;
-} job_msg[Transaction::Job::State::kMax] = {
+} job_complete_msg[Transaction::Job::State::kMax] = {
+	[Transaction::Job::State::kAwaiting] = {},
 	[Transaction::Job::State::kSuccess] = { ANSI_HL_GREEN, "  OK  " },
 	[Transaction::Job::State::kFailure] = { ANSI_HL_RED, " Fail " },
 	[Transaction::Job::State::kTimeout] = { ANSI_HL_RED, " Time " },
 	[Transaction::Job::State::kCancelled] = { ANSI_HL_GREEN, "Cancel" },
 };
 
-int
-Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
+void
+Scheduler::log_job_complete(Schedulable::Id id, Transaction::Job::State res)
 {
-	auto &desc = job_msg[res];
+	auto &desc = job_complete_msg[res];
 	std::ostringstream msg_col;
 	std::string code_col = "[" + desc.code + desc.msg + ANSI_CLEAR + "]";
 	bool succ = false;
-	auto &job = running_jobs[id];
 
 	switch (res) {
 	case Transaction::Job::State::kSuccess:
@@ -162,34 +221,13 @@ Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
 		assert(!"unreached");
 	}
 
-	job->state = res;
-	msg_col << job->object->id.name;
+	msg_col << id.name;
 
 	std::cout << std::left << std::setw(67) << msg_col.str() << std::right
 		  << std::setw(12) << code_col << "\n";
-
-	for (auto &dep : job->object->edges_to) {
-		Transaction::Job *job2;
-
-		if (!(dep->type & Edge::kAfter))
-			continue;
-		else if ((job2 = transactions.front()->job_for(dep->to)) !=
-			NULL &&
-		    job_runnable(job2)) {
-			std::cout << "Job " << *job2 << " may run now that "
-				  << *job2 << " is complete\n";
-			job_run(job2);
-		}
-	}
-
-	return 0;
 }
 
-int
-Scheduler::object_set_state(Schedulable::Id &id, Schedulable::State state)
-{
-	objects[id]->state = state;
-}
+#pragma endregion
 
 #pragma region Graph output
 void

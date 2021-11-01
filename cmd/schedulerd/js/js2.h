@@ -79,15 +79,15 @@ struct JSFD : public JSCXXClass<JSFD> {
 	int m_fd = -1;
 	JSPromiseDesc m_read;
 
-	/* factory methods */
+	/* factory JS methods */
 	static JSValue onFDReadable(JSContext *ctx, JSValueConst this_val,
 	    int argc, JSValueConst *argv);
 
-	/* instance methods */
+	/* instance JS methods */
 	JSValue ready(JSContext *ctx, JSValueConst this_val, int argc,
 	    JSValueConst *argv);
 
-	/* instance callbacks */
+	/* instance C++ methods */
 	void app_cb(int fd);
 	void clear();
 	void finalizer();
