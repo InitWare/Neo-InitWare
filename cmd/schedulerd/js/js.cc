@@ -29,6 +29,7 @@ JS::JS(App *app)
 
 	JS_SetRuntimeOpaque(m_rt, this);
 	JS_SetContextOpaque(m_ctx, this);
+	JS_SetModuleLoaderFunc(m_rt, NULL, js_module_loader, NULL);
 
 	mod = JS_NewCModule(m_ctx, "@initware", mod_init);
 	JSTimer::mod_export(m_ctx, mod);

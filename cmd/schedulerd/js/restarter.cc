@@ -1,6 +1,29 @@
 #include "quickjs.h"
 #include "restarter.h"
 
+/**
+ * related functions not actually belonging to JSRestarter
+ */
+JSValue
+completeJob(JSContext *ctx, JSValueConst this_val, int argc, JSValueConst *argv)
+{
+	JS *js = JS::from_context(ctx);
+	int64_t jobid;
+	int32_t jobres;
+
+	if (argc != 2 || JS_ToInt64(ctx, &jobid, argv[0]) ||
+	    JS_ToInt32(ctx, &jobres, argv[1]))
+		return JS_ThrowTypeError(ctx, "Bad arguments.");
+
+	return JS_NewInt32(ctx,
+	    js->m_app->m_sched.job_complete(jobid,
+		(Transaction::Job::State)jobres));
+}
+
+/**
+ * JSRestarter proper
+ */
+
 JSValue
 JSRestarter::create(JSContext *ctx, JSValueConst this_val, int argc,
     JSValueConst *argv)
@@ -85,7 +108,33 @@ JSClassDef JSRestarter::cls = {
 	.gc_mark = JSRestarter::gc_mark_s,
 };
 
+#define ENUM(js_prefix, enum_path, value)                     \
+	JS_PROP_INT32_DEF(js_prefix #value, enum_path::value, \
+	    JS_PROP_CONFIGURABLE)
+
+#define JOB_STATE(state) ENUM("", Transaction::Job::State, state)
+
+JSCFunctionListEntry js_enum_job_state_funcs[] = {
+	JOB_STATE(kAwaiting),
+	JOB_STATE(kSuccess),
+	JOB_STATE(kFailure),
+	JOB_STATE(kTimeout),
+	JOB_STATE(kCancelled),
+};
+
+JSCFunctionListEntry js_scheduler_funcs[] = {
+	JS_CFUNC_DEF("completeJob", 2, completeJob),
+
+	JS_OBJECT_DEF("EnumJobState", js_enum_job_state_funcs,
+	    countof(js_enum_job_state_funcs),
+	    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE),
+};
+
 JSCFunctionListEntry JSRestarter::funcs[] = {
+	JS_OBJECT_DEF("Scheduler", js_scheduler_funcs,
+	    countof(js_scheduler_funcs),
+	    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE),
+
 	JS_CFUNC_DEF("createRestarter", 1, JSRestarter::create),
 	JS_CFUNC_DEF("setRestarterForType", 2,
 	    (&first_arg_fun<JSRestarter, &JSRestarter::setForType>)),

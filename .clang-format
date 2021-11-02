@@ -6,7 +6,7 @@ AlignAfterOpenBracket: DontAlign
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
 AlignEscapedNewlines: Left
-AlignOperands: false
+AlignOperands: DontAlign
 AlignTrailingComments: true
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
@@ -97,7 +97,7 @@ ForEachMacros:
   - VM_PAGE_DUMP_FOREACH
 IndentCaseLabels: false
 IndentPPDirectives: None
-Language: Cpp
+#Language: Cpp
 NamespaceIndentation: None
 PointerAlignment: Right
 ContinuationIndentWidth: 4

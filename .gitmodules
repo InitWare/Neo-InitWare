@@ -1,3 +1,6 @@
 [submodule "vendor/quickjs"]
 	path = vendor/quickjs
 	url = ../quickjs
+[submodule "vendor/docbook2mdoc"]
+	path = vendor/docbook2mdoc
+	url = ../iw-docbook2mdoc

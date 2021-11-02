@@ -4,10 +4,14 @@ Neo-InitWare
 This repository contains a novel implementation of the systemd service
 manager/init system. Neo-InitWare makes a strong effort to faithfully replicate
 the semantics of the systemd job engine and transaction generator, the very
-components that define systemd. But Neo-InitWare is not intended at present to be
-an alternative to systemd nor to be used in production. It remains, for now, an
-experimental project. Classical [InitWare](https://github.com/InitWare/InitWare)
-is a more stable, conservative approach to a more modular and portable systemd.
+components that define systemd.
+
+Neo-InitWare is not intended at present to be an alternative to systemd nor to
+be used in production. The code is being written in exploratory fashion for now,
+with only minimal regard to correctness.
+
+Classical [InitWare](https://github.com/InitWare/InitWare) is a more stable,
+conservative approach to a more modular and portable systemd.
 
 Architecture
 ------------
@@ -33,6 +37,9 @@ Libkqueue on non-BSD systems) event loop is the centrepiece of this.
 This layer is comprised of several modules which integrate with one-another.
 
 #### Job Scheduler
+
+Job scheduling is more thoroughly described in the `niw_scheduling(7)` manual
+page.
 
 Responsible for scheduling jobs to run at the correct time. Jobs are
 state-querying or state-change requests on objects, e.g. "Start OpenSSH".

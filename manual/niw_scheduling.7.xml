@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<refentry version="5.1" xmlns="http://docbook.org/ns/docbook"
+          xmlns:xlink="http://www.w3.org/1999/xlink"
+          xmlns:xila="http://www.w3.org/2001/XInclude/local-attributes"
+          xmlns:xi="http://www.w3.org/2001/XInclude"
+          xmlns:trans="http://docbook.org/ns/transclusion"
+          xmlns:svg="http://www.w3.org/2000/svg"
+          xmlns:m="http://www.w3.org/1998/Math/MathML"
+          xmlns:html="http://www.w3.org/1999/xhtml"
+          xmlns:db="http://docbook.org/ns/docbook">
+  <refmeta>
+    <refentrytitle>niw_scheduling</refentrytitle>
+
+    <manvolnum>7</manvolnum>
+  </refmeta>
+
+  <refnamediv>
+    <refname>niw_scheduling</refname>
+
+    <refpurpose>the Neo-InitWare job scheduling model</refpurpose>
+  </refnamediv>
+
+  <refsection>
+    <title>Description</title>
+
+    <para>The Neo-InitWare job scheduler is designed to provide for the
+    automatic scheduling of services, with regard to both how services ought
+    to be started or stopped to reach a particular goal, and the ways in which
+    dynamic events ought to affect the running services.</para>
+
+    <para>The job scheduler is closely modelled after that of the X Desktop
+    Group's systemd, and is mostly compatible therewith. So this manual page
+    is largely applicable to systemd as well, though some differences do exist
+    (which are enumerated in the notes section). The three central concepts of
+    Neo-InitWare's job scheduler, which have counterparts in the systemd job
+    scheduler, are called the Holy Trinity of Neo-Initware: jobs, objects, and
+    dependencies. A less elegant fourth component, the Event-based Impurity,
+    is also shared with systemd.</para>
+
+    <refsection>
+      <title> Objects</title>
+
+      <para>Objects are the founding concept of Neo-InitWare. An object is a
+      logical entity encapsulating a resource or service. Objects may be
+      explicitly manageable to some degree (e.g. a service or a network
+      interface) or not (e.g. a device). They are monitored (and managed, if
+      manageable) by Delegated Restarters. They may implicitly arise from the
+      natural monitoring of the system by the delegated restarter (temporal
+      objects, e.g. devices) or may be explicitly configured (declared
+      objects).</para>
+
+      <para>Whether temporal or declared, all objects are configurable to some
+      extent by fragmentary configuration files, which may specify
+      dependencies. Dependencies come in various kinds, with major categories
+      thereof being co-enqueuing dependencies, event- triggered dependencies,
+      and ordering dependencies. These are explicable only with regard to the
+      Transactions system and the Event-based Impurity.</para>
+    </refsection>
+
+    <refsection>
+      <title>Jobs</title>
+
+      <para>A job is a state-changing or state-querying request on an object.
+      There are several kinds of jobs: some of these are requests to start the
+      object, requests to stop the object, and verification that the object is
+      online. Jobs are issued to the delegated restarter in charge of an
+      object, and are timed. Jobs may complete in several ways: either
+      successfully if the the request was carried out, unsuccessfully if it
+      couldn't, timed out if the request wasn't completed in time, or
+      cancelled before completion.</para>
+
+      <para>The semantics of different jobs varies by delegated restarter;
+      while the service restarter will try to start a service if a start job
+      is issued, the device restarter, being unable to effect any change, can
+      only wait, marking the job successful if the device appears before the
+      job timeout elapses.</para>
+    </refsection>
+
+    <refsection>
+      <title>Transactions</title>
+
+      <para>Transactions are graphs of jobs linked by requirement. They are
+      generated from a particular goal job, e.g. "start A.service".
+      Transaction generation proceeds by </para>
+
+      <para/>
+
+      <para/>
+    </refsection>
+  </refsection>
+</refentry>

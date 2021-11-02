@@ -21,6 +21,12 @@ Edge::~Edge()
 	to->edges_to.remove(this);
 }
 
+const Schedulable::Id &
+Schedulable::id() const
+{
+	return ids.front();
+}
+
 Edge *
 Schedulable::add_edge(Edge::Type type, SPtr to)
 {
@@ -37,14 +43,23 @@ Schedulable::Id::operator==(const Id &other) const
 bool
 Schedulable::Id::operator==(const Schedulable::SPtr &obj) const
 {
-	return name == obj->id.name;
+	return name == obj->id().name;
 }
 
 Schedulable::SPtr
 Scheduler::add_object(Schedulable::SPtr obj)
 {
-	assert(objects.find(obj->id) == objects.end());
-	objects[obj->id] = obj;
+	return add_object(obj->id(), obj);
+}
+
+Schedulable::SPtr
+Scheduler::add_object(Schedulable::Id id, Schedulable::SPtr obj)
+{
+	assert(objects.find(obj) == objects.end());
+	assert(aliases.find(id) == aliases.end() ||
+	    aliases.find(id)->second == obj);
+	objects.emplace(obj);
+	aliases[id] = obj;
 
 	return obj;
 }
@@ -52,7 +67,7 @@ Scheduler::add_object(Schedulable::SPtr obj)
 int
 Scheduler::job_run(Transaction::Job *job)
 {
-	std::cout << "Starting " << job->object->id.name << "\n";
+	std::cout << "Starting " << job->object->id().name << "\n";
 	running_jobs[job->id] = job;
 	job->timer = app.add_timer(false, 700 /* JOB TIMEOUT MSEC */,
 	    std::bind(&Scheduler::job_timeout_cb, this, std::placeholders::_1,
@@ -76,6 +91,7 @@ Scheduler::job_runnable(Transaction::Job *job)
 {
 	if (job->state != Transaction::Job::kAwaiting)
 		return false;
+
 	for (auto &dep : job->object->edges) {
 		Transaction::Job *job2;
 
@@ -128,7 +144,7 @@ Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
 	if (job->timer != 0)
 		app.del_timer(job->timer);
 	running_jobs.erase(id);
-	log_job_complete(job->object->id, res);
+	log_job_complete(job->object->id(), res);
 	job->state = res;
 
 	if (res == Transaction::Job::State::kSuccess &&
@@ -160,8 +176,8 @@ start_others:
 
 		if (!(dep->type & Edge::kAfter))
 			continue;
-		else if ((job2 = transactions.front()->job_for(dep->to)) !=
-			NULL &&
+		else if ((job2 = transactions.front()->job_for(
+			      dep->from.lock())) != NULL &&
 		    job_runnable(job2)) {
 			std::cout << "Job " << *job2 << " may run now that "
 				  << *job2 << " is complete\n";
@@ -175,7 +191,7 @@ start_others:
 int
 Scheduler::object_set_state(Schedulable::Id &id, Schedulable::State state)
 {
-	objects[id]->state = state;
+	aliases[id]->state = state;
 	return 0;
 }
 
@@ -234,14 +250,14 @@ void
 Edge::to_graph(std::ostream &out) const
 {
 	auto p = from.lock();
-	out << p->id.name << " -> " << to->id.name;
+	out << p->id().name << " -> " << to->id().name;
 	out << "[label=\"" << type_str() << "\"];\n";
 }
 
 void
 Schedulable::to_graph(std::ostream &out) const
 {
-	out << id.name + ";\n";
+	out << id().name + ";\n";
 	for (auto &edge : edges_to)
 		edge->to_graph(out);
 }
@@ -251,7 +267,7 @@ Scheduler::to_graph(std::ostream &out) const
 {
 	out << "digraph sched {\n";
 	for (auto object : objects)
-		object.second->to_graph(out);
+		object->to_graph(out);
 	out << "}\n";
 }
 
