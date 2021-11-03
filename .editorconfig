@@ -1,3 +1,3 @@
-[*.{c,cc,h,hh}]
+[*.{c,cc,h,hh,js,mjs}]
 indent_style = tab
 indent_size = 8
