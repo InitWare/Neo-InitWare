@@ -10,7 +10,7 @@ template <typename T> struct JSCXXClass {
 	static void gc_mark_s(JSRuntime *rt, JSValueConst val,
 	    JS_MarkFunc *mark_func);
 
-	static void mod_init(JSContext *ctx, JSModuleDef *mod);
+	static int mod_init(JSContext *ctx, JSModuleDef *mod);
 	static void mod_export(JSContext *ctx, JSModuleDef *mod);
 };
 
@@ -134,12 +134,13 @@ JSCXXClass<T>::gc_mark_s(JSRuntime *rt, JSValueConst val,
 }
 
 template <typename T>
-void
+int
 JSCXXClass<T>::mod_init(JSContext *ctx, JSModuleDef *mod)
 {
 	JS_NewClassID(&T::clsid);
 	JS_NewClass(JS_GetRuntime(ctx), T::clsid, &T::cls);
 	JS_SetModuleExportList(ctx, mod, T::funcs, T::nfuncs);
+	return 0;
 }
 
 template <typename T>

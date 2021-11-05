@@ -1,4 +1,5 @@
 
+#include "fs.h"
 #include "js2.h"
 #include "quickjs-libc.h"
 #include "restarter.h"
@@ -35,6 +36,9 @@ JS::JS(App *app)
 	JSTimer::mod_export(m_ctx, mod);
 	JSFD::mod_export(m_ctx, mod);
 	JSRestarter::mod_export(m_ctx, mod);
+
+	mod = JS_NewCModule(m_ctx, "fs", JSFS::mod_init);
+	JSFS::mod_export(m_ctx, mod);
 
 	js_std_add_helpers(m_ctx, 0, NULL);
 }
