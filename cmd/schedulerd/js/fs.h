@@ -25,6 +25,12 @@ class JSFS : public JSCXXClass<JSFS> {
 	/** string -> string[] */
 	static JSValue readdirSync(JSContext *ctx, JSValueConst this_val,
 	    int argc, JSValueConst *argv);
+	/** string, number, number => number */
+	static JSValue openSync(JSContext *ctx, JSValueConst this_val, int argc,
+	    JSValueConst *argv);
+	/**  */
+	static JSValue readSync(JSContext *ctx, JSValueConst this_val, int argc,
+	    JSValueConst *argv);
 
 	/** string -> string[] */
 	static JSValue getLinkedNames(JSContext *ctx, JSValueConst this_val,

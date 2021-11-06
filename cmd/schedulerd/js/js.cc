@@ -36,8 +36,6 @@ JS::JS(App *app)
 	JSTimer::mod_export(m_ctx, mod);
 	JSFD::mod_export(m_ctx, mod);
 	JSRestarter::mod_export(m_ctx, mod);
-
-	mod = JS_NewCModule(m_ctx, "fs", JSFS::mod_init);
 	JSFS::mod_export(m_ctx, mod);
 
 	js_std_add_helpers(m_ctx, 0, NULL);
@@ -49,6 +47,7 @@ JS::mod_init(JSContext *ctx, JSModuleDef *mod)
 	JSTimer::mod_init(ctx, mod);
 	JSFD::mod_init(ctx, mod);
 	JSRestarter::mod_init(ctx, mod);
+	JSFS::mod_init(ctx, mod);
 
 	return 0;
 }

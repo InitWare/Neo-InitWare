@@ -108,11 +108,7 @@ JSClassDef JSRestarter::cls = {
 	.gc_mark = JSRestarter::gc_mark_s,
 };
 
-#define ENUM(js_prefix, enum_path, value)                     \
-	JS_PROP_INT32_DEF(js_prefix #value, enum_path::value, \
-	    JS_PROP_CONFIGURABLE)
-
-#define JOB_STATE(state) ENUM("", Transaction::Job::State, state)
+#define JOB_STATE(state) JS_ENUM("", Transaction::Job::State, state)
 
 JSCFunctionListEntry js_enum_job_state_funcs[] = {
 	JOB_STATE(kAwaiting),
