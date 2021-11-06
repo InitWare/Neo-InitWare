@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
 #include <iostream>
 #include <libgen.h>
@@ -169,8 +170,25 @@ JSValue
 JSFS::readdirSync(JSContext *ctx, JSValueConst this_val, int argc,
     JSValueConst *argv)
 {
-	JS *js = JS::from_context(ctx);
 	JSValue arr = JS_NewArray(ctx);
+	DIR *dir;
+	struct dirent *dp;
+	IWJSCString path(ctx);
+	int i;
+
+	path = JS_ToCString(ctx, argv[0]);
+	if (path == NULL)
+		JS_ThrowTypeError(ctx, "path must be string");
+
+	dir = opendir(path);
+	if (!dir)
+		return JS_ThrowInternalError(ctx, "OpenDir: Errno %d", errno);
+
+	while ((dp = readdir(dir)) != NULL) {
+		JS_SetPropertyUint32(ctx, arr, i++,
+		    JS_NewString(ctx, dp->d_name));
+	}
+	closedir(dir);
 
 	return arr;
 }
