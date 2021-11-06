@@ -41,8 +41,8 @@ main(int argc, char *argv[])
 	c = app.m_sched.add_object(std::make_shared<Schedulable>("c.target"));
 
 	a->add_edge(Edge::Type(Edge::kAfter), c);
-	b->add_edge(Edge::Type(Edge::kAfter | Edge::kWant), a);
-	c->add_edge(Edge::Type(Edge::kAfter | Edge::kRequire), b);
+	b->add_edge(Edge::Type(Edge::kAfter | Edge::kAddStartNonreq), a);
+	c->add_edge(Edge::Type(Edge::kAfter | Edge::kAddStart), b);
 
 	app.m_sched.to_graph(std::cout);
 

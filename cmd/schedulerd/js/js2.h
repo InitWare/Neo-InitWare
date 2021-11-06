@@ -7,8 +7,8 @@
 
 #define JS_ENUM(js_prefix, enum_path, value)                  \
 	JS_PROP_INT32_DEF(js_prefix #value, enum_path::value, \
-	    JS_PROP_CONFIGURABLE)
-#define IWJS_CONST(value) JS_PROP_INT32_DEF(#value, value, JS_PROP_CONFIGURABLE)
+	    JS_PROP_ENUMERABLE)
+#define IWJS_CONST(value) JS_PROP_INT32_DEF(#value, value, JS_PROP_ENUMERABLE)
 
 template <typename T> struct JSCXXClass {
 	static void finalizer_s(JSRuntime *rt, JSValue val);

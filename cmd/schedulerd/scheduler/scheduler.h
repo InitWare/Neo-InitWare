@@ -40,27 +40,27 @@ class Edge {
 		 * For a start job, enqueue a required dependency start job on
 		 * #to.
 		 */
-		kRequire = BITFLAG(0),
+		kAddStart = BITFLAG(0),
 		/**
 		 * For a start job, enqueue a non-required dependency start job
 		 * on #to, but ignore result.
 		 */
-		kWant = BITFLAG(1),
+		kAddStartNonreq = BITFLAG(1),
 		/**
 		 * For a start job, enqueue a required dependency verify (check
 		 * if online) job on #to, and fail if that fails.
 		 */
-		kRequisite = BITFLAG(2),
+		kAddVerify = BITFLAG(2),
 		/**
 		 * For a start job, enqueue a required dependency stop job on
 		 * #to.
 		 */
-		kConflict = BITFLAG(3),
+		kAddStop = BITFLAG(3),
 		/**
 		 * For a start job, enqueue a non-required dependency stop job
 		 * on #to.
 		 */
-		kConflictedBy = BITFLAG(4),
+		kAddStopNonreq = BITFLAG(4),
 		/**
 		 * For a stop job, enqueue a non-required dependency stop job on
 		 * #to.
@@ -99,7 +99,7 @@ class Edge {
 		/**
 		 * On unexpected stop, enqueue a stop job for #to.
 		 */
-		kBoundBy = BITFLAG(11),
+		kStopOnStopped = BITFLAG(11),
 
 		/**
 		 * @}
@@ -220,11 +220,16 @@ class Transaction {
 
     public:
 	enum JobType {
+		/**
+		 * \defgroup regular Regular job types
+		 * @{
+		 */
 		kStart,
 		kVerify,
 		kStop,
 		kReload,
 		kRestart,
+		/** @} */
 
 		kTryStart,	/**< as kStart, but only as requirement of
 				   kTryRestart */

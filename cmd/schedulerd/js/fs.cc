@@ -174,7 +174,7 @@ JSFS::readdirSync(JSContext *ctx, JSValueConst this_val, int argc,
 	DIR *dir;
 	struct dirent *dp;
 	IWJSCString path(ctx);
-	int i;
+	int i = 0;
 
 	path = JS_ToCString(ctx, argv[0]);
 	if (path == NULL)

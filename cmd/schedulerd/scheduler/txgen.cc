@@ -280,15 +280,15 @@ Transaction::submit_job(Schedulable::SPtr object, JobType op,
 
 	if (among(op,
 		{ JobType::kStart, JobType::kRestart, JobType::kTryRestart })) {
-		object->foreach_edge(EdgeVisitor(Edge::kRequire,
+		object->foreach_edge(EdgeVisitor(Edge::kAddStart,
 		    JobType::kStart, *this, sj, /* required */ true));
-		object->foreach_edge(EdgeVisitor(Edge::kWant, JobType::kStart,
-		    *this, sj, /* required */ false));
-		object->foreach_edge(EdgeVisitor(Edge::kRequisite,
+		object->foreach_edge(EdgeVisitor(Edge::kAddStartNonreq,
+		    JobType::kStart, *this, sj, /* required */ false));
+		object->foreach_edge(EdgeVisitor(Edge::kAddVerify,
 		    JobType::kVerify, *this, sj, /* required */ true));
-		object->foreach_edge(EdgeVisitor(Edge::kConflict,
-		    JobType::kStop, *this, sj, /* required */ true));
-		object->foreach_edge(EdgeVisitor(Edge::kConflictedBy,
+		object->foreach_edge(EdgeVisitor(Edge::kAddStop, JobType::kStop,
+		    *this, sj, /* required */ true));
+		object->foreach_edge(EdgeVisitor(Edge::kAddStopNonreq,
 		    JobType::kStop, *this, sj, /* required */ false));
 	} else if (op == JobType::kStop)
 		object->foreach_edge(EdgeVisitor(Edge::kPropagatesStopTo,

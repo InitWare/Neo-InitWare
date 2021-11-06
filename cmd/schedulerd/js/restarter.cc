@@ -118,12 +118,36 @@ JSCFunctionListEntry js_enum_job_state_funcs[] = {
 	JOB_STATE(kCancelled),
 };
 
+#define EDGE(state) JS_ENUM("", Edge::Type, state)
+/* clang-format off */
+JSCFunctionListEntry js_enum_edge_funcs[] = {
+	EDGE(kAddStart),
+	EDGE(kAddStartNonreq),
+	EDGE(kAddVerify),
+	EDGE(kAddStop),
+	EDGE(kAddStopNonreq),
+	EDGE(kPropagatesStopTo),
+	EDGE(kPropagatesRestartTo),
+	EDGE(kPropagatesReloadTo),
+	EDGE(kStartOnStarted),
+	EDGE(kTryStartOnStarted),
+	EDGE(kStopOnStarted),
+	EDGE(kStopOnStopped),
+	EDGE(kOnSuccess),
+	EDGE(kOnFailure),
+	EDGE(kAfter),
+	EDGE(kBefore)
+};
+/* clang-format on */
+
 JSCFunctionListEntry js_scheduler_funcs[] = {
 	JS_CFUNC_DEF("completeJob", 2, completeJob),
 
-	JS_OBJECT_DEF("EnumJobState", js_enum_job_state_funcs,
+	JS_OBJECT_DEF("Job", js_enum_job_state_funcs,
 	    countof(js_enum_job_state_funcs),
 	    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE),
+	JS_OBJECT_DEF("Edge", js_enum_edge_funcs, countof(js_enum_edge_funcs),
+	    JS_PROP_ENUMERABLE),
 };
 
 JSCFunctionListEntry JSRestarter::funcs[] = {
