@@ -1695,6 +1695,68 @@ template <class T> struct js_traits<std::vector<T>> {
 	}
 };
 
+/** Convert from std::map<T> to Object and vice-versa. If Object holds objects
+ * that are non-convertible to T throws qjs::exception */
+template <class TValue> struct js_traits<std::map<std::string, TValue>> {
+	static JSValue wrap(JSContext *ctx,
+	    const std::map<std::string, TValue> &arr) noexcept
+	{
+		try {
+			auto jsarray = Value { ctx, JS_NewObject(ctx) };
+			for (auto pairs : arr)
+				jsarray[pairs.first] = pairs.second;
+			return jsarray.release();
+		} catch (exception) {
+			return JS_EXCEPTION;
+		}
+	}
+
+	static std::map<std::string, TValue> unwrap(JSContext *ctx,
+	    JSValueConst obj)
+	{
+		int e = JS_IsObject(obj);
+		if (e == 0)
+			JS_ThrowTypeError(ctx,
+			    "js_traits<std::map<T>>::unwrap expects object");
+		if (e <= 0)
+			throw exception {};
+
+		JSPropertyEnum *tab;
+		uint32_t len;
+
+		if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj,
+			JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+			throw exception {};
+
+		std::map<std::string, TValue> arr;
+
+		for (int i = 0; i < len; i++) {
+			auto val = Value(ctx,
+			    JS_GetProperty(ctx, obj, tab[i].atom));
+			const char *key;
+
+			/*
+			 * TODO: check if val is exception and throw
+			 * accordingly. Must be careful to ensure strings freed
+			 * appropriately.
+			 */
+
+			key = JS_AtomToCString(ctx, tab[i].atom);
+			assert(key);
+
+			arr[static_cast<std::string>(key)] =
+			    static_cast<TValue>(val);
+
+			JS_FreeCString(ctx, key);
+			JS_FreeAtom(ctx, tab[i].atom);
+		}
+
+		js_free(ctx, tab);
+
+		return arr;
+	}
+};
+
 template <typename U, typename V> struct js_traits<std::pair<U, V>> {
 	static JSValue wrap(JSContext *ctx, std::pair<U, V> obj) noexcept
 	{

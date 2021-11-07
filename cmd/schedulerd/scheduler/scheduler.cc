@@ -66,10 +66,10 @@ Schedulable::SPtr
 Scheduler::add_object(ObjectId id, Schedulable::SPtr obj)
 {
 	assert(objects.find(obj) == objects.end());
-	assert(aliases.find(id) == aliases.end() ||
-	    aliases.find(id)->second == obj);
+	assert(m_aliases.find(id) == m_aliases.end() ||
+	    m_aliases.find(id)->second == obj);
 	objects.emplace(obj);
-	aliases[id] = obj;
+	m_aliases[id] = obj;
 
 	return obj;
 }
@@ -198,10 +198,39 @@ start_others:
 	return 0;
 }
 
+void
+Scheduler::object_load(std::vector<std::string> aliases,
+    std::map<std::string, Edge::Type> edges_from,
+    std::map<std::string, Edge::Type> edges_to)
+{
+	Schedulable::SPtr obj;
+
+	for (auto &alias : aliases)
+		m_aliases.erase(alias);
+
+	if (obj == NULL)
+		obj = std::make_shared<Schedulable>();
+
+	for (auto &alias : aliases)
+		obj->ids.push_back(alias);
+
+	for (auto &edge : edges_from) {
+		std::cout << "Edge " << Edge::type_str(edge.second) << " to "
+			  << edge.first << "\n";
+		// obj->add_edge(edge.second, edge.first);
+	}
+
+	for (auto &edge : edges_to) {
+		std::cout << "Edge " << Edge::type_str(edge.second) << " from "
+			  << edge.first << "\n";
+		// obj->add_edge(edge.second, edge.first);
+	}
+}
+
 int
 Scheduler::object_set_state(ObjectId &id, Schedulable::State state)
 {
-	aliases[id]->state = state;
+	m_aliases[id]->state = state;
 	return 0;
 }
 
@@ -284,6 +313,12 @@ Scheduler::to_graph(std::ostream &out) const
 std::string
 Edge::type_str() const
 {
+	return type_str(type);
+}
+
+std::string
+Edge::type_str(Type type)
+{
 	/* clang-format off */
 	static const std::map<int, const char *> types = {
 		{kAddStart, "Require"},
@@ -295,7 +330,7 @@ Edge::type_str() const
 		{kPropagatesRestartTo, "PropagatesRestartTo"},
 		{kPropagatesReloadTo, "PropagatesReloadTo"},
 		{kStartOnStarted, "StartOnStarted"},
-		{kTryStartOnStarted, "TryStartOnSTaretd"},
+		{kTryStartOnStarted, "TryStartOnStarted"},
 		{kStopOnStarted, "StopOnStarted"},
 		{kStopOnStopped, "BoundBy"},
 		{kOnSuccess, "OnSuccess"},

@@ -167,6 +167,7 @@ class Edge {
 	    std::shared_ptr<Schedulable> to);
 	~Edge();
 
+	static std::string type_str(Type);
 	std::string type_str() const;
 
 	void to_graph(std::ostream &out) const;
@@ -202,6 +203,7 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
     public:
 	State state = kUninitialised;
 
+	Schedulable() {};
 	Schedulable(std::string name) { ids.push_back(name); };
 
 	/** Get the principal name of this node. */
@@ -384,7 +386,7 @@ class Scheduler {
 
 	std::unordered_set<Schedulable::SPtr> objects;
 	std::unordered_map<ObjectId, Schedulable::SPtr, ObjectId::HashFn>
-	    aliases;
+	    m_aliases;
 	std::queue<std::unique_ptr<Transaction>> transactions;
 	std::unordered_map<Transaction::Job::Id, Transaction::Job *>
 	    running_jobs;
@@ -414,8 +416,17 @@ class Scheduler {
 	Schedulable::SPtr add_object(ObjectId id, Schedulable::SPtr obj);
 	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
 
+	/**
+	 * @defgroup jobs Job management
+	 * @{
+	 */
 	Transaction::Job *job_for_id(Transaction::Job::Id id);
 	int job_complete(Transaction::Job::Id id, Transaction::Job::State res);
+	/** @} */
+
+	void object_load(std::vector<std::string> aliases,
+	    std::map<std::string, Edge::Type> edges_from,
+	    std::map<std::string, Edge::Type> edges_to);
 
 	/**
 	 * Notify the scheduler that an object has changed state. This is a
