@@ -8,8 +8,10 @@
 #include "iwng_compat/misc.h"
 #include "scheduler.h"
 
-Edge::Edge(Type type, Schedulable::WPtr from, Schedulable::SPtr to)
-    : type(type)
+Edge::Edge(ObjectId owner, Type type, Schedulable::WPtr from,
+    Schedulable::SPtr to)
+    : owner(owner)
+    , type(type)
     , from(from)
     , to(to)
 {
@@ -21,7 +23,7 @@ Edge::~Edge()
 	to->edges_to.remove(this);
 }
 
-const Schedulable::Id &
+const ObjectId &
 Schedulable::id() const
 {
 	return ids.front();
@@ -30,18 +32,26 @@ Schedulable::id() const
 Edge *
 Schedulable::add_edge(Edge::Type type, SPtr to)
 {
-	edges.emplace_back(new Edge(type, shared_from_this(), to));
+	edges.emplace_back(new Edge(id(), type, shared_from_this(), to));
 	return edges.back().get();
 }
 
+Edge *
+Schedulable::add_edge_to(Edge::Type type, SPtr from)
+{
+	from->edges.emplace_back(
+	    new Edge(id(), type, from, shared_from_this()));
+	return from->edges.back().get();
+}
+
 bool
-Schedulable::Id::operator==(const Id &other) const
+ObjectId::operator==(const ObjectId &other) const
 {
 	return name == other.name;
 }
 
 bool
-Schedulable::Id::operator==(const Schedulable::SPtr &obj) const
+ObjectId::operator==(const Schedulable::SPtr &obj) const
 {
 	return name == obj->id().name;
 }
@@ -53,7 +63,7 @@ Scheduler::add_object(Schedulable::SPtr obj)
 }
 
 Schedulable::SPtr
-Scheduler::add_object(Schedulable::Id id, Schedulable::SPtr obj)
+Scheduler::add_object(ObjectId id, Schedulable::SPtr obj)
 {
 	assert(objects.find(obj) == objects.end());
 	assert(aliases.find(id) == aliases.end() ||
@@ -189,7 +199,7 @@ start_others:
 }
 
 int
-Scheduler::object_set_state(Schedulable::Id &id, Schedulable::State state)
+Scheduler::object_set_state(ObjectId &id, Schedulable::State state)
 {
 	aliases[id]->state = state;
 	return 0;
@@ -208,7 +218,7 @@ static struct {
 };
 
 void
-Scheduler::log_job_complete(Schedulable::Id id, Transaction::Job::State res)
+Scheduler::log_job_complete(ObjectId id, Transaction::Job::State res)
 {
 	auto &desc = job_complete_msg[res];
 	std::ostringstream msg_col;
