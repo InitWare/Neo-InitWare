@@ -1,5 +1,5 @@
 /*
- * Source: https://github.com/ftk/quickjspp (licenced CC0)
+ * Source: https://github.com/ftk/quickjspp (licenced CC0) @ 43f9d9d
  */
 
 #ifndef QJSPP_H_

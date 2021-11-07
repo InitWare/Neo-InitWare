@@ -92,8 +92,7 @@ get_symlinks(const char *path, std::vector<std::string> &names)
 			close(fd);
 			return 0;
 		} else if (errno != NOFOLLOW_SYMLINK_ERRNO) {
-			printf("open %s got got errno %s\n", path,
-			    strerror(errno));
+			printf("open %s got errno %s\n", path, strerror(errno));
 			return -errno;
 		}
 
