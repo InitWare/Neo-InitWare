@@ -6,10 +6,11 @@
 #include <fcntl.h>
 #include <iostream>
 #include <libgen.h>
+#include <list>
 #include <unistd.h>
 
-#include "fs.h"
-#include "js2.h"
+#include "js.h"
+#include "qjspp.h"
 #include "quickjs.h"
 
 #ifdef __NetBSD__
@@ -70,7 +71,7 @@ readlink_absolute(const char *path, char *out)
 }
 
 static int
-get_symlinks(const char *path, std::list<std::string> &names)
+get_symlinks(const char *path, std::vector<std::string> &names)
 {
 	int depth = 0;
 
@@ -98,155 +99,73 @@ get_symlinks(const char *path, std::list<std::string> &names)
 
 		ret = readlink_absolute(path, buf);
 		if (ret < 0)
-			return errno;
+			return -errno;
 
 		path = buf;
 	}
 }
 
-struct IWJSCString {
-	const char *str = nullptr;
-	JSContext *ctx;
-
-	IWJSCString(JSContext *ctx)
-	    : ctx(ctx)
-	{
-	}
-
-	IWJSCString &operator=(const char *txt)
-	{
-		assert(!str);
-		str = txt;
-		return *this;
-	}
-
-	~IWJSCString()
-	{
-		if (str)
-			JS_FreeCString(ctx, str);
-	}
-
-	operator const char *() const { return str; }
-};
-
-struct IWJSValue {
-	JSValue val = JS_UNDEFINED;
-	JSContext *ctx;
-
-	IWJSValue(JSContext *ctx)
-	    : ctx(ctx)
-	{
-	}
-
-	IWJSValue &operator=(JSValue newval)
-	{
-		if (!JS_IsUndefined(val))
-			JS_FreeValue(ctx, val);
-		val = newval;
-		return *this;
-	}
-
-	~IWJSValue()
-	{
-		if (!JS_IsUndefined(val))
-			JS_FreeValue(ctx, val);
-	}
-
-	operator JSValue() const { return val; }
-
-	JSValue unmanage()
-	{
-		JSValue theval = val;
-		val = JS_UNDEFINED;
-		return theval;
-	}
-};
+static qjs::Value
+throwErrno(JSContext *ctx, int err)
+{
+	return qjs::Value(ctx,
+	    JS_ThrowInternalError(ctx, "Errno %d: %s", err, strerror(err)));
+}
 
 /**
  * JSFS proper
  */
 
-JSValue
-JSFS::readdirSync(JSContext *ctx, JSValueConst this_val, int argc,
-    JSValueConst *argv)
+static qjs::Value
+getLinkedNames(qjs::Value opath)
 {
-	JSValue arr = JS_NewArray(ctx);
-	DIR *dir;
-	struct dirent *dp;
-	IWJSCString path(ctx);
+	JSContext *ctx = opath.ctx;
+	std::string path = opath.as<std::string>();
+	std::vector<std::string> names;
+	int ret;
 	int i = 0;
 
-	path = JS_ToCString(ctx, argv[0]);
-	if (path == NULL)
-		JS_ThrowTypeError(ctx, "path must be string");
+	ret = get_symlinks(path.c_str(), names);
+	if (ret < 0)
+		return throwErrno(ctx, -ret);
 
-	dir = opendir(path);
-	if (!dir)
-		return JS_ThrowInternalError(ctx, "OpenDir: Errno %d", errno);
-
-	while ((dp = readdir(dir)) != NULL) {
-		JS_SetPropertyUint32(ctx, arr, i++,
-		    JS_NewString(ctx, dp->d_name));
-	}
-	closedir(dir);
-
-	return arr;
+	return qjs::Value(ctx, names);
 }
 
-JSValue
-JSFS::openSync(JSContext *ctx, JSValueConst this_val, int argc,
-    JSValueConst *argv)
+qjs::Value
+openSync(qjs::Value opath, int64_t flags, int64_t mode)
 {
-	JS *js = JS::from_context(ctx);
-	IWJSCString path(ctx);
-	int64_t mode, flags;
+	JSContext *ctx = opath.ctx;
+	std::string path = opath.as<std::string>();
 	int fd;
 
-	path = JS_ToCString(ctx, argv[0]);
-	if (path == NULL)
-		JS_ThrowTypeError(ctx, "path must be string");
-
-	if (JS_ToInt64(ctx, &flags, argv[1]))
-		JS_ThrowTypeError(ctx, "bad flags");
-	else if (JS_ToInt64(ctx, &mode, argv[2]))
-		JS_ThrowTypeError(ctx, "bad mode");
-
 	if (mode & O_CREAT)
-		fd = open(path, flags, mode);
+		fd = open(path.c_str(), flags, mode);
 	else
-		fd = open(path, flags);
+		fd = open(path.c_str(), flags);
 
 	if (fd < 0)
-		return JS_ThrowInternalError(ctx, "Open: Errno %d", errno);
+		return throwErrno(ctx, errno);
 	else
-		return JS_NewInt64(ctx, fd);
+		return qjs::Value(ctx, fd);
 }
 
-JSValue
-JSFS::readSync(JSContext *ctx, JSValueConst this_val, int argc,
-    JSValueConst *argv)
+qjs::Value
+readSync(int64_t fd, qjs::Value buffer, int64_t offset, int64_t length,
+    int64_t position)
 {
-	JS *js = JS::from_context(ctx);
-	int64_t fd, offset, length, position = -1;
+	JSContext *ctx = buffer.ctx;
 	int nread;
 	uint8_t *jsbuf;
 	size_t lenJsbuf;
 
-	jsbuf = JS_GetArrayBuffer(ctx, &lenJsbuf, argv[1]);
+	jsbuf = JS_GetArrayBuffer(ctx, &lenJsbuf, buffer.v);
 	if (jsbuf == NULL)
-		return JS_ThrowTypeError(ctx, "bad buffer");
-	else if (JS_ToInt64(ctx, &fd, argv[0]))
-		return JS_ThrowTypeError(ctx, "bad fd");
-	else if (JS_ToInt64(ctx, &offset, argv[2]))
-		return JS_ThrowTypeError(ctx, "bad offset");
-	else if (JS_ToInt64(ctx, &length, argv[3]))
-		return JS_ThrowTypeError(ctx, "bad length");
-	else if (!JS_IsUndefined(argv[4]) &&
-	    JS_ToInt64(ctx, &position, argv[4]))
-		return JS_ThrowTypeError(ctx, "bad position");
+		return qjs::Value(ctx, JS_ThrowTypeError(ctx, "bad buffer"));
 
 	if (lenJsbuf < (offset + length))
-		return JS_ThrowRangeError(ctx, "read len > buf len");
+		return qjs::Value(ctx,
+		    JS_ThrowRangeError(ctx, "read len > buf len"));
 
 	if (position == -1)
 		nread = read(fd, jsbuf + offset, length);
@@ -254,65 +173,49 @@ JSFS::readSync(JSContext *ctx, JSValueConst this_val, int argc,
 		nread = pread(fd, jsbuf + offset, length, position);
 
 	if (nread == -1)
-		return JS_ThrowInternalError(ctx, "Read: Errno %d", errno);
+		return throwErrno(ctx, errno);
 	else
-		return JS_NewInt64(ctx, nread);
+		return qjs::Value(ctx, nread);
 }
 
-JSValue
-JSFS::getLinkedNames(JSContext *ctx, JSValueConst this_val, int argc,
-    JSValueConst *argv)
+static qjs::Value
+readdirSync(qjs::Value opath)
 {
-	JS *js = JS::from_context(ctx);
-	JSValue arr = JS_NewArray(ctx);
-	std::list<std::string> names;
-	const char *path;
-	int ret;
-	int i = 0;
+	DIR *dir;
+	struct dirent *dp;
+	uint32_t i = 0;
+	std::string path = opath.as<std::string>();
+	auto jsarray = qjs::Value { opath.ctx, JS_NewArray(opath.ctx) };
 
-	path = JS_ToCString(ctx, argv[0]);
-	if (!path)
-		return JS_ThrowTypeError(ctx, "first arg must be string");
+	dir = opendir(path.c_str());
+	if (!dir)
+		return throwErrno(opath.ctx, errno);
 
-	ret = get_symlinks(path, names);
-	if (ret < 0)
-		return JS_ThrowInternalError(ctx, "errno %d", -ret);
+	while ((dp = readdir(dir)) != NULL)
+		jsarray[i++] = std::string(dp->d_name);
+	closedir(dir);
 
-	for (auto &name : names)
-		JS_SetPropertyUint32(ctx, arr, i++,
-		    JS_NewString(ctx, name.c_str()));
-
-	return arr;
+	return jsarray;
 }
 
-JSClassID JSFS::clsid;
+void
+setup_fs(qjs::Context *ctx)
+{
+	qjs::Context::Module &mod = ctx->addModule("@iw/fs");
+	qjs::Value constants = ctx->newObject();
 
-JSClassDef JSFS::cls = {
-	"FS",
-};
+	mod.function<getLinkedNames>("getLinkedNames")
+	    .function<openSync>("openSync")
+	    .function<readSync>("readSync")
+	    .function<readdirSync>("readdirSync")
+	    .add("constants", constants);
 
-/* clang-format off */
-JSCFunctionListEntry js_constants_funcs[] = {
-	IWJS_CONST(O_RDONLY),
-	IWJS_CONST(O_WRONLY),
-	IWJS_CONST(O_RDWR),
-	IWJS_CONST(O_ACCMODE),
+#define CONST(val) constants[#val] = (int64_t)val;
+	CONST(O_RDONLY);
+	CONST(O_WRONLY);
+	CONST(O_RDWR);
+	CONST(O_ACCMODE);
 
-	IWJS_CONST(O_NONBLOCK),
-	IWJS_CONST(O_APPEND)
-};
-/* clang-format on */
-
-JSCFunctionListEntry JSFS::funcs[] = {
-	JS_OBJECT_DEF("constants", js_constants_funcs,
-	    countof(js_constants_funcs),
-	    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE),
-	JS_CFUNC_DEF("openSync", 2, JSFS::openSync),
-	JS_CFUNC_DEF("readSync", 5, JSFS::readSync),
-	JS_CFUNC_DEF("readdirSync", 2, JSFS::readdirSync),
-
-	JS_CFUNC_DEF("getLinkedNames", 1, JSFS::getLinkedNames),
-	JS_PROP_STRING_DEF("[Symbol.toStringTag]", "fs", JS_PROP_CONFIGURABLE),
-};
-
-size_t JSFS::nfuncs = countof(JSFS::funcs);
+	CONST(O_NONBLOCK);
+	CONST(O_APPEND);
+}
