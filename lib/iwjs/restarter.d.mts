@@ -1,5 +1,6 @@
 import { Scheduler } from "./scheduler.mjs";
 
+/** The abstract superclass of delegated restarters. */
 export abstract class Restarter {
 	constructor(scheduler: Scheduler);
 
