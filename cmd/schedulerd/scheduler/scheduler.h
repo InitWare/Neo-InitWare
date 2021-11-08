@@ -17,6 +17,7 @@
 class App;
 class Job;
 class Schedulable;
+class Scheduler;
 class Restarter;
 
 #define BITFLAG(n) (1 << n)
@@ -32,6 +33,8 @@ struct ObjectId {
 	std::string name; /* full name of the object */
 
 	ObjectId(std::string name)
+	    : name(name) {};
+	ObjectId(const char *name)
 	    : name(name) {};
 
 	bool operator==(const ObjectId &other) const;
@@ -160,11 +163,10 @@ class Edge {
 	Type type;			 /** Relationship type bitfield */
 
 	ObjectId owner;
-	std::weak_ptr<Schedulable> from; /** Proximal object */
-	std::shared_ptr<Schedulable> to; /** Distal object */
+	ObjectId from; /** Proximal object */
+	ObjectId to;   /** Distal object */
 
-	Edge(ObjectId owner, Type type, std::weak_ptr<Schedulable> from,
-	    std::shared_ptr<Schedulable> to);
+	Edge(ObjectId owner, Type type, ObjectId from, ObjectId to);
 	~Edge();
 
 	static std::string type_str(Type);
@@ -209,10 +211,6 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	/** Get the principal name of this node. */
 	const ObjectId &id() const;
 
-	/** Add an edge from this object to another, owned by this object. */
-	Edge *add_edge(Edge::Type type, SPtr to);
-	/** Add an edge from another object to this, owned by this object. */
-	Edge *add_edge_to(Edge::Type type, SPtr to);
 	template <typename T> T foreach_edge(T);
 
 	void to_graph(std::ostream &out) const;
@@ -339,6 +337,7 @@ class Transaction {
 	};
 
     protected:
+	Scheduler &sched;
 	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
 	Job *objective; /**< the job this tx aims to achieve */
 
@@ -363,10 +362,11 @@ class Transaction {
 	void del_jobs_for(Schedulable::SPtr object);
 
     public:
-	Transaction(Schedulable::SPtr object, JobType op);
+	Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op);
 
 	/** First job (if any) for object. */
 	Job *job_for(Schedulable::SPtr object);
+	Job *job_for(ObjectId object);
 
 	static const char *type_str(JobType type);
 	void to_graph(std::ostream &out) const;
@@ -415,6 +415,13 @@ class Scheduler {
 	Schedulable::SPtr add_object(Schedulable::SPtr obj);
 	Schedulable::SPtr add_object(ObjectId id, Schedulable::SPtr obj);
 	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
+
+	/**
+	 * Add an edge from one object to another. If the to-node does not
+	 * exist, a placeholder is created.
+	 */
+	Edge *edge_add(Edge::Type type, ObjectId owner, ObjectId from,
+	    ObjectId to);
 
 	/**
 	 * @defgroup jobs Job management

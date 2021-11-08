@@ -8,40 +8,22 @@
 #include "iwng_compat/misc.h"
 #include "scheduler.h"
 
-Edge::Edge(ObjectId owner, Type type, Schedulable::WPtr from,
-    Schedulable::SPtr to)
+Edge::Edge(ObjectId owner, Type type, ObjectId from, ObjectId to)
     : owner(owner)
     , type(type)
     , from(from)
     , to(to)
 {
-	to->edges_to.push_back(this);
 }
 
 Edge::~Edge()
 {
-	to->edges_to.remove(this);
 }
 
 const ObjectId &
 Schedulable::id() const
 {
 	return ids.front();
-}
-
-Edge *
-Schedulable::add_edge(Edge::Type type, SPtr to)
-{
-	edges.emplace_back(new Edge(id(), type, shared_from_this(), to));
-	return edges.back().get();
-}
-
-Edge *
-Schedulable::add_edge_to(Edge::Type type, SPtr from)
-{
-	from->edges.emplace_back(
-	    new Edge(id(), type, from, shared_from_this()));
-	return from->edges.back().get();
 }
 
 bool
@@ -72,6 +54,19 @@ Scheduler::add_object(ObjectId id, Schedulable::SPtr obj)
 	m_aliases[id] = obj;
 
 	return obj;
+}
+
+Edge *
+Scheduler::edge_add(Edge::Type type, ObjectId owner, ObjectId from, ObjectId to)
+{
+	auto oowner = object_get(from), ofrom = object_get(from),
+	     oto = object_get(to);
+
+	ofrom->edges.emplace_back(
+	    std::make_unique<Edge>(owner, type, from, to));
+	oto->edges_to.emplace_back(ofrom->edges.back().get());
+
+	return ofrom->edges.back().get();
 }
 
 int
@@ -141,7 +136,7 @@ Scheduler::enqueue_leaves(Transaction *tx)
 bool
 Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
 {
-	transactions.emplace(std::make_unique<Transaction>(object, op));
+	transactions.emplace(std::make_unique<Transaction>(*this, object, op));
 	enqueue_leaves(transactions.front().get());
 	return true;
 }
@@ -186,8 +181,8 @@ start_others:
 
 		if (!(dep->type & Edge::kAfter))
 			continue;
-		else if ((job2 = transactions.front()->job_for(
-			      dep->from.lock())) != NULL &&
+		else if ((job2 = transactions.front()->job_for(dep->from)) !=
+			NULL &&
 		    job_runnable(job2)) {
 			std::cout << "Job " << *job2 << " may run now that "
 				  << *job2 << " is complete\n";
@@ -196,6 +191,16 @@ start_others:
 	}
 
 	return 0;
+}
+
+Schedulable *
+Scheduler::object_get(ObjectId &id)
+{
+	auto it = m_aliases.find(id);
+	if (it != m_aliases.end())
+		return it->second.get();
+	else
+		return nullptr;
 }
 
 void
@@ -288,8 +293,7 @@ Scheduler::log_job_complete(ObjectId id, Transaction::Job::State res)
 void
 Edge::to_graph(std::ostream &out) const
 {
-	auto p = from.lock();
-	out << p->id().name << " -> " << to->id().name;
+	out << from.name << " -> " << to.name;
 	out << "[label=\"" << type_str() << "\"];\n";
 }
 

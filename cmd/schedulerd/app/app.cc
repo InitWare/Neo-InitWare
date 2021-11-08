@@ -16,7 +16,6 @@ App::add_timer(bool recur, int ms, Timer::callback_t cb, uintptr_t udata)
 
 	EV_SET(&kev, (uintptr_t)timer, EVFILT_TIMER,
 	    EV_ADD | EV_ENABLE | (recur ? 0 : EV_ONESHOT), 0, ms, NULL);
-	printf("KQ: %d\n", m_kq);
 	ret = kevent(m_kq, &kev, 1, NULL, 0, NULL);
 	if (ret < 0) {
 		m_timers.pop_back();

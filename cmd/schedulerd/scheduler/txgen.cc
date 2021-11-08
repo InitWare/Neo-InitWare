@@ -3,7 +3,8 @@
 
 #include "scheduler.h"
 
-Transaction::Transaction(Schedulable::SPtr object, JobType op)
+Transaction::Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op)
+    : sched(sched)
 {
 	objective = submit_job(object, op, true);
 	to_graph(std::cout);
@@ -94,6 +95,16 @@ Transaction::job_for(Schedulable::SPtr object)
 	return it == jobs.end() ? nullptr : it->second.get();
 }
 
+Transaction::Job *
+Transaction::job_for(ObjectId id)
+{
+	for (auto &pair : jobs) {
+		if (id == pair.first)
+			return pair.second.get();
+	}
+	return nullptr;
+}
+
 #pragma region Order loop detection &recovery
 
 class OrderVisitor : public Edge::Visitor {
@@ -116,9 +127,11 @@ void
 OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type & Edge::kAfter && !cyclic) {
-		if (tx.jobs.find(edge->to) != tx.jobs.end()) {
+		if (tx.job_for(edge->to) != nullptr) {
 			/* job(s) exist for this After edge - check for loop */
-			if (tx.is_cyclic(edge->to, path))
+			if (tx.is_cyclic(tx.sched.object_get(edge->to)
+					     ->shared_from_this(), // fixme ugly
+				path))
 				cyclic = true;
 		}
 	}
@@ -241,8 +254,11 @@ EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type & type) {
 		bool goal_required = (requirer->goal_required) && is_required;
-		Transaction::Job *sj = tx.submit_job(edge->to, op,
-		    goal_required);
+		Transaction::Job *sj =
+		    tx.submit_job(tx.sched.object_get(edge->to)
+				      ->shared_from_this() // fixme ugly
+			,
+			op, goal_required);
 
 		requirer->add_req(sj, is_required, goal_required);
 	}

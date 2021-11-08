@@ -33,15 +33,18 @@ main(int argc, char *argv[])
 	b = app.m_sched.add_object(std::make_shared<Schedulable>("b.target"));
 	c = app.m_sched.add_object(std::make_shared<Schedulable>("c.target"));
 
-	a->add_edge(Edge::Type(Edge::kAfter), c);
-	b->add_edge(Edge::Type(Edge::kAfter | Edge::kAddStartNonreq), a);
-	c->add_edge(Edge::Type(Edge::kAfter | Edge::kAddStart), b);
+	app.m_sched.edge_add(Edge::Type(Edge::kAfter), "a.target", "a.target",
+	    "c.target");
+	app.m_sched.edge_add(Edge::Type(Edge::kAfter | Edge::kAddStartNonreq),
+	    "b.target", "b.target", "a.target");
+	app.m_sched.edge_add(Edge::Type(Edge::kAfter | Edge::kAddStart),
+	    "c.target", "c.target", "b.target");
 
-#if 0
+	//#if 0
 	app.m_sched.to_graph(std::cout);
 
 	app.m_sched.enqueue_tx(c, Transaction::JobType::kStart);
-#endif
+	//#endif
 
 	//! test code ends
 
