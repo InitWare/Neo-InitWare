@@ -17,26 +17,25 @@ Architecture
 ------------
 
 The Neo-InitWare Scheduler Service, the program which implements the majority of
-the Neo-InitWare system, is implemented in a layered fashion. We will start with
-the lowest levels of that Service
- and proceed upwards.
+the Neo-InitWare system, is implemented in a modular, layered fashion. We will
+start with the lowest levels of that service and proceed upwards.
 
-### Portability Layer
+## Portability Layer
 
 This layer sits directly atop the provisions of the host operating system. The
 most basic operations on which the event loop depends may be indirected through
 this layer.
 
-### Event Loop
+## Event Loop (EVLOOP)
 
 Neo-InitWare is designed with asynchronicity in mind. A Kernel Queues (or
 Libkqueue on non-BSD systems) event loop is the centrepiece of this.
 
-### Core Services
+## Core Services
 
 This layer is comprised of several modules which integrate with one-another.
 
-#### Job Scheduler
+#### Job Scheduler (JOBSCHED)
 
 Job scheduling is more thoroughly described in the `niw_scheduling(7)` manual
 page.
@@ -67,7 +66,7 @@ start.
 
 The result of a transaction is the result of its goal job.
 
-#### Process Manager
+#### Process Manager (PROCMAN)
 
 Carries out the low-level tasks of OS process management. Processes are observed
 and on GNU/Linux and BSD platforms, this extends to tracking processes as they
@@ -76,12 +75,15 @@ create subprocesses and exit (Kernel Queues or CGroups can do this.)
 Process launch may be hooked by Process Launch Extensions to alter the execution
 environment prior to launching an actual subprocess.
 
-#### Virtual Machine Manager
+#### Service Virtual Machines Monitor (SVMMON)
 
 Governs JavaScript virtual machines provided by the QuickJS library. Extensive
-integration with the other core services is provided for. 
+integration with the other core services is provided for. A small library of
+functionality to integrate with the operating system directly is provided; the
+interfaces are mostly similar to those of Node.JS. A WebWorkers-like API
+provides for out-of-process modules to run.
 
-#### Reference Monitor
+#### Reference Monitor (REFMON)
 
 This verifies that requests originating outwith the Neo-InitWare scheduler service
 hold a right to query a particular object. All connections to the Neo-InitWare over
@@ -90,24 +92,30 @@ stop a particular object, to query any object's status, or to shut down the
 service manager. Any request made over the management interface must be
 authorised by the Reference Monitor before the action can be carried out.
 
-#### Schedulable Object Graph
+#### Schedulable Object Graph (OBJGRAPH)
 
 All objects in the system are maintained in an object graph. This graph
-maintains a description of each object sufficient for the other components to
+maintains a description of each object sufficient for the other core services to
 operate with; this includes the state of the object, its interrelations (edges)
 with other objects, and where the various data describing the object was sourced
 from.
 
-The Manifest Loader is a closely-associated component. It is responsible for
-loading any data about the object described in manifest files, e.g. for systemd
-"service units", the contents of the systemd unit description files which
-describe the "service unit". In the future, the Manifest Loader will move into
-a dedicated worker subprocess and communicate with the Neo-InitWare Scheduler
-Service via message-passing, to bring some level of LangSec to the system.
+## JavaScript Services
+
+Various higher-level services are written in JavaScript and run in the virtual
+machines.
+
+#### Systemd Manifest Loader
+
+This component loads legacy systemd unit-files.
+
+#### Delegated Restarter for Services
+
+Implements the supervision semantics of systemd `.service` units.
 
 Licencing
 ---------
 
-This software is made available under similar terms to the original 4-clause BSD 
-licence. See [LICENCE.md]. If you do not wish to use the software under those
+This software is made available under the terms of the 4-Clause BSD Licence. See
+[LICENCE.md](LICENCE.md). If you do not wish to use the software under those
 terms, you may use it under the terms of the Affero GPL version 3.0 instead.
