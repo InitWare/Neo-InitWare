@@ -6,7 +6,7 @@
 Transaction::Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op)
     : sched(sched)
 {
-	objective = submit_job(object, op, true);
+	objective = job_submit(object, op, true);
 	to_graph(std::cout);
 	if (!verify_acyclic())
 		throw("Transaction is unresolveably cyclical");
@@ -73,7 +73,7 @@ Transaction::Job::after_order(Job *other)
 
 /** Delete all jobs on \p object. */
 void
-Transaction::del_jobs_for(Schedulable::SPtr object)
+Transaction::object_del_jobs(Schedulable::SPtr object)
 {
 	std::vector<Job *> dellist;
 
@@ -89,14 +89,14 @@ Transaction::del_jobs_for(Schedulable::SPtr object)
 }
 
 Transaction::Job *
-Transaction::job_for(Schedulable::SPtr object)
+Transaction::object_job_for(Schedulable::SPtr object)
 {
 	auto it = jobs.find(object);
 	return it == jobs.end() ? nullptr : it->second.get();
 }
 
 Transaction::Job *
-Transaction::job_for(ObjectId id)
+Transaction::object_job_for(ObjectId id)
 {
 	for (auto &pair : jobs) {
 		if (id == pair.first)
@@ -127,18 +127,29 @@ void
 OrderVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type & Edge::kAfter && !cyclic) {
-		if (tx.job_for(edge->to) != nullptr) {
+		if (tx.object_job_for(edge->to) != nullptr) {
 			/* job(s) exist for this After edge - check for loop */
-			if (tx.is_cyclic(tx.sched.object_get(edge->to)
-					     ->shared_from_this(), // fixme ugly
+			if (tx.object_creates_cycle(
+				tx.sched.object_get(edge->to)
+				    ->shared_from_this(), // fixme ugly
 				path))
 				cyclic = true;
 		}
 	}
 }
 
+/**
+ * Visits the object's ordering edges, where a #Job::kAfter edge (or a
+ * from-edge of an #Edge::kBefore) exists and the other node has a job
+ * present in the transaction, this function calls itself with that node
+ * as \p origin and the same \p path.
+ *
+ * At the start of each invocation \p path is searched to see if that object is
+ * already present; if so, a cycle is indicated and true is returned. Otherwise
+ * the object is added to \p path and edges visited as described.
+ */
 bool
-Transaction::is_cyclic(Schedulable::SPtr job,
+Transaction::object_creates_cycle(Schedulable::SPtr job,
     std::vector<Schedulable::SPtr> &path)
 {
 	bool cyclic = false;
@@ -156,7 +167,7 @@ Transaction::is_cyclic(Schedulable::SPtr job,
 }
 
 bool
-Transaction::object_jobs_required(Schedulable::SPtr object)
+Transaction::object_requires_all_jobs(Schedulable::SPtr object)
 {
 	for (auto rnge = jobs.equal_range(object); rnge.first != rnge.second;
 	     rnge.first++) {
@@ -189,11 +200,11 @@ Transaction::try_remove_cycle(std::vector<Schedulable::SPtr> &path)
 	for (auto &job : reverse(path)) {
 		bool essential = false;
 
-		if (!object_jobs_required(job)) {
+		if (!object_requires_all_jobs(job)) {
 			std::cout << "Cycle resolved: deleting jobs on "
 				  << job->id().name
 				  << " as non-essential to goal.\n";
-			del_jobs_for(job);
+			object_del_jobs(job);
 			return true;
 		}
 	}
@@ -209,7 +220,7 @@ Transaction::verify_acyclic()
 restart:
 	for (auto &job : jobs) {
 		std::vector<Schedulable::SPtr> path;
-		if (is_cyclic(job.second->object, path)) {
+		if (object_creates_cycle(job.second->object, path)) {
 			printf("CYCLE DETECTED:\n");
 			for (auto &obj : path)
 				printf("%s -> ", obj->id().name.c_str());
@@ -254,18 +265,28 @@ EdgeVisitor::operator()(std::unique_ptr<Edge> &edge)
 {
 	if (edge->type & type) {
 		bool goal_required = (requirer->goal_required) && is_required;
-		Transaction::Job *sj =
-		    tx.submit_job(tx.sched.object_get(edge->to)
-				      ->shared_from_this() // fixme ugly
-			,
-			op, goal_required);
+		Transaction::Job *sj = tx.job_submit(edge->to, op,
+		    goal_required);
 
 		requirer->add_req(sj, is_required, goal_required);
 	}
 }
 
 Transaction::Job *
-Transaction::submit_job(Schedulable::SPtr object, JobType op,
+Transaction::job_submit(ObjectId id, JobType op, bool goal_required)
+{
+	auto object = sched.object_get(id);
+
+	if (!object) {
+		std::cout << "No object for ID " + id.name + "\n";
+		return NULL;
+	} else
+		return job_submit(object->shared_from_this(), op,
+		    goal_required);
+}
+
+Transaction::Job *
+Transaction::job_submit(Schedulable::SPtr object, JobType op,
     bool goal_required)
 {
 	Job *sj = NULL;	     /* newly created or existing subjob */

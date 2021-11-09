@@ -29,9 +29,9 @@ main(int argc, char *argv[])
 
 	app.restarters["target"] = new TargetRestarter(app.m_sched);
 
-	a = app.m_sched.add_object(std::make_shared<Schedulable>("a.target"));
-	b = app.m_sched.add_object(std::make_shared<Schedulable>("b.target"));
-	c = app.m_sched.add_object(std::make_shared<Schedulable>("c.target"));
+	a = app.m_sched.object_add(std::make_shared<Schedulable>("a.target"));
+	b = app.m_sched.object_add(std::make_shared<Schedulable>("b.target"));
+	c = app.m_sched.object_add(std::make_shared<Schedulable>("c.target"));
 
 	app.m_sched.edge_add(Edge::Type(Edge::kAfter), "a.target", "a.target",
 	    "c.target");
@@ -43,7 +43,7 @@ main(int argc, char *argv[])
 	//#if 0
 	app.m_sched.to_graph(std::cout);
 
-	app.m_sched.enqueue_tx(c, Transaction::JobType::kStart);
+	app.m_sched.tx_enqueue(c, Transaction::JobType::kStart);
 	//#endif
 
 	//! test code ends

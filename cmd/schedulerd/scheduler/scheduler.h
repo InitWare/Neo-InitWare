@@ -298,11 +298,13 @@ class Transaction {
 		bool goal_required = false;
 
 		/**
-		 * These are mainly of interest in jobs currently running.
+		 * \defgroup runstate State for running jobs
+		 * @{
 		 */
-		Id id = -1;
-		Evloop::timerid_t timer = 0; /**< job timeout timer id */
-		State state = kAwaiting;
+		Id id = -1;		     /**< unique ID */
+		Evloop::timerid_t timer = 0; /**< timeout timer id */
+		State state = kAwaiting;     /**< state */
+		/** @} */
 
 		Job(Schedulable::SPtr object, JobType type)
 		    : object(object)
@@ -342,31 +344,68 @@ class Transaction {
 	Job *objective; /**< the job this tx aims to achieve */
 
 	/**
-	 * Add a new job including all of its dependencies.
+	 * @brief Add a new job including all of its dependencies
+	 * @param is_goal Whether this job is to be the goal job of the tx.
+	 * @retval NULL Job could not be added.
+	 * @retval Pointer to the created job.
 	 */
-	Job *submit_job(Schedulable::SPtr object, JobType op,
+	Job *job_submit(ObjectId id, JobType op, bool is_goal = false);
+	/**
+	 * As job_submit(ObjectId, JobType, bool) but directly referring to a
+	 * schedulable entity.
+	 * \see job_submit(ObjectId, JobType, bool)
+	 */
+	Job *job_submit(Schedulable::SPtr object, JobType op,
 	    bool is_goal = false);
 
     private:
-	bool is_cyclic(Schedulable::SPtr origin,
-	    std::vector<Schedulable::SPtr> &path);
-	/** Are all jobs on \p object required for the goal? */
-	bool object_jobs_required(Schedulable::SPtr object);
-	/** Try to find an object for which removing all jobs will end
-	 * loop. */
+	/**
+	 * Tries to break a cycle (path of cycle indicated by \path) by finding
+	 * an object whose jobs are not required for the goal, and deletes those
+	 * jobs if so.
+	 * @retval false if couldn't berak cycle
+	 * @retval true if cycle broken by removing an object's jobs
+	 */
 	bool try_remove_cycle(std::vector<Schedulable::SPtr> &path);
+	/**
+	 * Verifies that the tranasction is acyclic. For each  cycles detected,
+	 * tries to remove the cycle by calling try_remove_cycle().
+	 * @retval true if transaction is (now) acyclic
+	 * @retval false if transaction is cyclic
+	 */
 	bool verify_acyclic();
 
-	/** Delete all jobs on \p object. Jobs requiring these also
-	 * deleted. */
-	void del_jobs_for(Schedulable::SPtr object);
+	/**
+	 * Determine whether an ordering cycle is created by the presence of
+	 * a job for a given object.
+	 * @retval false if no cycle fonud
+	 * @retval true if cycle found, \p path contains the ordering path.
+	 */
+	bool object_creates_cycle(Schedulable::SPtr origin,
+	    std::vector<Schedulable::SPtr> &path);
+	/**
+	 * Delete all jobs on \p object. Jobs requiring these also
+	 * deleted.
+	 */
+	void object_del_jobs(Schedulable::SPtr object);
+	/**
+	 * Determines whether any of the jobs on \p object are required by, or
+	 * are, the goal.
+	 */
+	bool object_requires_all_jobs(Schedulable::SPtr object);
 
     public:
 	Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op);
 
-	/** First job (if any) for object. */
-	Job *job_for(Schedulable::SPtr object);
-	Job *job_for(ObjectId object);
+	/**
+	 * Return the first job (if any) for a given object.
+	 */
+	Job *object_job_for(ObjectId object);
+	/**
+	 * As object_job_for(ObjectId).
+	 * \see object_job_for(ObjectId)
+	 */
+	Job *object_job_for(Schedulable::SPtr object);
 
 	static const char *type_str(JobType type);
 	void to_graph(std::ostream &out) const;
@@ -404,17 +443,13 @@ class Scheduler {
 	void job_timeout_cb(Evloop::timerid_t id, uintptr_t udata);
 
 	/** Enqueue the set of leaf jobs ready to start immediately. */
-	int enqueue_leaves(Transaction *tx);
+	int tx_enqueue_leaves(Transaction *tx);
 
 	void log_job_complete(ObjectId id, Transaction::Job::State res);
 
     public:
 	Scheduler(App &app)
 	    : app(app) {};
-
-	Schedulable::SPtr add_object(Schedulable::SPtr obj);
-	Schedulable::SPtr add_object(ObjectId id, Schedulable::SPtr obj);
-	bool enqueue_tx(Schedulable::SPtr object, Transaction::JobType op);
 
 	/**
 	 * Add an edge from one object to another. If the to-node does not
@@ -427,14 +462,42 @@ class Scheduler {
 	 * @defgroup jobs Job management
 	 * @{
 	 */
-	Transaction::Job *job_for_id(Transaction::Job::Id id);
+	/**
+	 * Get the job matching the given ID, if there is one.
+	 */
+	Transaction::Job *job_get(Transaction::Job::Id id);
+	/**
+	 * Notify the scheduler of the completion of a job.
+	 */
 	int job_complete(Transaction::Job::Id id, Transaction::Job::State res);
 	/** @} */
 
+	/**
+	 * @defgroup objects Object management
+	 * @{
+	 */
+	/**
+	 * Add an object created outwith the scheduler.
+	 */
+	Schedulable::SPtr object_add(Schedulable::SPtr obj);
+	/**
+	 * As object_add(Schedulable::SPtr) but with an explicit main alias.
+	 */
+	Schedulable::SPtr object_add(ObjectId id, Schedulable::SPtr obj);
+	/**
+	 * Retrieve the object matching the identifier, if there is one.
+	 * @retval NULL no such object
+	 * @retval Schedulable matching object
+	 */
+	Schedulable *object_get(ObjectId &id);
+	/**
+	 * Load an object into the scheduler as defined by its set of aliases, a
+	 * map of distal node identifiers to edge masks to create edges to, and
+	 * map of proximal node identifiers to edge masks to create edges from.
+	 */
 	void object_load(std::vector<std::string> aliases,
 	    std::map<std::string, Edge::Type> edges_from,
 	    std::map<std::string, Edge::Type> edges_to);
-
 	/**
 	 * Notify the scheduler that an object has changed state. This is a
 	 * orthogonal to the jobs system; state changes notified by this means
@@ -442,9 +505,14 @@ class Scheduler {
 	 * impurity.
 	 */
 	int object_set_state(ObjectId &id, Schedulable::State state);
+	/** @} */
 
-	/** Retrieve an object by its Id. */
-	Schedulable *object_get(ObjectId &id);
+	/**
+	 * Generate and enqueue a transaction.
+	 * @retval 0 Transaction successfully enqueued
+	 * @retval -errno Transaction creation or enqueuing failed.
+	 */
+	bool tx_enqueue(Schedulable::SPtr object, Transaction::JobType op);
 
 	void to_graph(std::ostream &out) const;
 };

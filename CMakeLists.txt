@@ -12,7 +12,8 @@ if (CMAKE_SYSTEM_NAME MATCHES ".*Linux|Linux")
 endif ()
 
 if (DOXYGEN_FOUND)
-	set( DOXYGEN_OUTPUT_DIRECTORY doxygen )
+	set(DOXYGEN_OUTPUT_DIRECTORY doxygen)
+	set(DOXYGEN_EXCLUDE_PATTERNS "*/vendor/*")
 	doxygen_add_docs(doxygen ${PROJECT_SOURCE_DIR})
 endif ()
 

@@ -39,13 +39,13 @@ ObjectId::operator==(const Schedulable::SPtr &obj) const
 }
 
 Schedulable::SPtr
-Scheduler::add_object(Schedulable::SPtr obj)
+Scheduler::object_add(Schedulable::SPtr obj)
 {
-	return add_object(obj->id(), obj);
+	return object_add(obj->id(), obj);
 }
 
 Schedulable::SPtr
-Scheduler::add_object(ObjectId id, Schedulable::SPtr obj)
+Scheduler::object_add(ObjectId id, Schedulable::SPtr obj)
 {
 	assert(objects.find(obj) == objects.end());
 	assert(m_aliases.find(id) == m_aliases.end() ||
@@ -102,8 +102,8 @@ Scheduler::job_runnable(Transaction::Job *job)
 
 		if (!(dep->type & Edge::kAfter))
 			continue;
-		else if ((job2 = transactions.front()->job_for(dep->to)) !=
-			NULL &&
+		else if ((job2 = transactions.front()->object_job_for(
+			      dep->to)) != NULL &&
 		    job->after_order(job2) == 1) {
 			std::cout << "Job " << *job << " must wait for "
 				  << *job2 << " to complete\n";
@@ -116,7 +116,7 @@ Scheduler::job_runnable(Transaction::Job *job)
 }
 
 int
-Scheduler::enqueue_leaves(Transaction *tx)
+Scheduler::tx_enqueue_leaves(Transaction *tx)
 {
 	for (auto &it : tx->jobs) {
 		auto job = it.second.get();
@@ -134,10 +134,10 @@ Scheduler::enqueue_leaves(Transaction *tx)
 }
 
 bool
-Scheduler::enqueue_tx(Schedulable::SPtr object, Transaction::JobType op)
+Scheduler::tx_enqueue(Schedulable::SPtr object, Transaction::JobType op)
 {
 	transactions.emplace(std::make_unique<Transaction>(*this, object, op));
-	enqueue_leaves(transactions.front().get());
+	tx_enqueue_leaves(transactions.front().get());
 	return true;
 }
 
@@ -181,8 +181,8 @@ start_others:
 
 		if (!(dep->type & Edge::kAfter))
 			continue;
-		else if ((job2 = transactions.front()->job_for(dep->from)) !=
-			NULL &&
+		else if ((job2 = transactions.front()->object_job_for(
+			      dep->from)) != NULL &&
 		    job_runnable(job2)) {
 			std::cout << "Job " << *job2 << " may run now that "
 				  << *job2 << " is complete\n";
