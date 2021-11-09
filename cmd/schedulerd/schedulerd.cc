@@ -18,7 +18,7 @@ main(int argc, char *argv[])
 
 	try {
 		app.m_js.ctx->evalFile(argv[1], JS_EVAL_TYPE_MODULE);
-	} catch (qjs::exception exc) {
+	} catch (const qjs::exception &exc) {
 		app.m_js.log_exception(app.m_js.ctx);
 	}
 

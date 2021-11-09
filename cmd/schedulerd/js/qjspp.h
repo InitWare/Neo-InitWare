@@ -555,7 +555,7 @@ wrap_call(JSContext *ctx, Callable &&f, JSValueConst *argv) noexcept
 			    std::apply(std::forward<Callable>(f),
 				unwrap_args<Args...>(ctx, argv)));
 		}
-	} catch (exception) {
+	} catch (const exception &) {
 		return JS_EXCEPTION;
 	}
 }
@@ -582,7 +582,7 @@ wrap_this_call(JSContext *ctx, Callable &&f, JSValueConst this_value,
 						   &this_value),
 				    unwrap_args<Args...>(ctx, argv))));
 		}
-	} catch (exception) {
+	} catch (const exception &) {
 		return JS_EXCEPTION;
 	}
 }
@@ -735,7 +735,7 @@ struct js_traits<ctor_wrapper<T, Args...>> {
 				    JS_SetOpaque(jsobj,
 					new std::shared_ptr<T>(std::move(ptr)));
 				    return jsobj;
-			    } catch (qjs::exception) {
+			    } catch (const exception &) {
 				    JS_FreeValue(ctx, jsobj);
 				    JS_ThrowTypeError(ctx,
 					"quickjspp ctor wrapper failed, probably a bad type");
@@ -1673,7 +1673,7 @@ template <class T> struct js_traits<std::vector<T>> {
 			for (uint32_t i = 0; i < (uint32_t)arr.size(); i++)
 				jsarray[i] = arr[i];
 			return jsarray.release();
-		} catch (exception) {
+		} catch (const exception &) {
 			return JS_EXCEPTION;
 		}
 	}
@@ -1707,7 +1707,7 @@ template <class TValue> struct js_traits<std::map<std::string, TValue>> {
 			for (auto pairs : arr)
 				jsarray[pairs.first] = pairs.second;
 			return jsarray.release();
-		} catch (exception) {
+		} catch (const exception &) {
 			return JS_EXCEPTION;
 		}
 	}
@@ -1766,7 +1766,7 @@ template <typename U, typename V> struct js_traits<std::pair<U, V>> {
 			jsarray[uint32_t(0)] = std::move(obj.first);
 			jsarray[uint32_t(1)] = std::move(obj.second);
 			return jsarray.release();
-		} catch (exception) {
+		} catch (const exception &) {
 			return JS_EXCEPTION;
 		}
 	}
@@ -1815,7 +1815,7 @@ template <typename T> struct js_traits<std::optional<T>> {
 			if (JS_IsNull(v))
 				return std::nullopt;
 			return js_traits<std::decay_t<T>>::unwrap(ctx, v);
-		} catch (exception) {
+		} catch (const exception &) {
 			// ignore and clear exception
 			JS_FreeValue(ctx, JS_GetException(ctx));
 		}
