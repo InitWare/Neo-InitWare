@@ -26,6 +26,8 @@ struct JS {
 	/** Log the last exception for a context. */
 	void log_exception(qjs::Context *ctx);
 
+	void loadObject(std::string name);
+
 	JS(App &app);
 };
 

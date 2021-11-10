@@ -144,3 +144,14 @@ JS::log_exception(qjs::Context *ctx)
 	std::cout << val.as<std::string>() << "\n"
 		  << stack.as<std::string>() << "\n";
 }
+
+void
+JS::loadObject(std::string name)
+{
+	try {
+		ctx->global()["loadObject"]
+		    .as<std::function<void(std::string)>>()(name);
+	} catch (const qjs::exception &exc) {
+		log_exception(ctx);
+	}
+}

@@ -62,7 +62,7 @@ readlink_absolute(const char *path, char *out)
 
 	if (!path_absolute(buf.data())) {
 		char *dir = dirname_a(path);
-		snprintf(out, MAXPATHLEN, "%s%s", dir, buf.data());
+		snprintf(out, MAXPATHLEN, "%s/%s", dir, buf.data());
 		free(dir);
 	} else
 		strcpy(out, buf.data());

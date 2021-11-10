@@ -22,6 +22,7 @@ class Restarter;
 
 #define BITFLAG(n) (1 << n)
 
+/** A unique identifier for an object. An object may have many of these. */
 struct ObjectId {
 	struct HashFn {
 		std::size_t operator()(const ObjectId &id) const
@@ -30,7 +31,7 @@ struct ObjectId {
 		}
 	};
 
-	std::string name; /* full name of the object */
+	std::string name; /**< full name of the object */
 
 	ObjectId(std::string name)
 	    : name(name) {};
@@ -43,6 +44,9 @@ struct ObjectId {
 
 /** An edge between two entities in the Schedulable Objects Graph. */
 class Edge {
+	friend class Schedulable;
+	friend class Scheduler;
+
     public:
 	class Visitor {
 		virtual void operator()(std::unique_ptr<Edge> &edge) = 0;
@@ -160,14 +164,17 @@ class Edge {
 	};
 
     public:
-	Type type;			 /** Relationship type bitfield */
+	Type type; /**< Relationship type bitfield */
 
-	ObjectId owner;
-	ObjectId from; /** Proximal object */
-	ObjectId to;   /** Distal object */
+	ObjectId owner; /**< Object whose configuration introduced this edge */
+	ObjectId from;	/**< Proximal object */
+	ObjectId to;	/**< Distal object */
 
-	Edge(ObjectId owner, Type type, ObjectId from, ObjectId to);
-	~Edge();
+	Edge(ObjectId owner, Type type, ObjectId from, ObjectId to)
+	    : owner(owner)
+	    , type(type)
+	    , from(from)
+	    , to(to) {};
 
 	static std::string type_str(Type);
 	std::string type_str() const;
@@ -181,6 +188,7 @@ class Schedulable : public std::enable_shared_from_this<Schedulable> {
 	friend class Edge;
 	friend class Transaction;
 	friend class EdgeVisitor;
+	friend class ObjectId;
 
     public:
 	typedef std::weak_ptr<Schedulable> WPtr;
@@ -225,16 +233,11 @@ class Transaction {
 
     public:
 	enum JobType {
-		/**
-		 * \defgroup regular Regular job types
-		 * @{
-		 */
-		kStart,
-		kVerify,
-		kStop,
-		kReload,
-		kRestart,
-		/** @} */
+		kStart,	  /**< start the object */
+		kVerify,  /**< check the object is online */
+		kStop,	  /**< stop the object */
+		kReload,  /** reload the object */
+		kRestart, /** stop then start the object */
 
 		kTryStart,	/**< as kStart, but only as requirement of
 				   kTryRestart */
@@ -253,11 +256,11 @@ class Transaction {
 		typedef int64_t Id;
 
 		enum State {
-			kAwaiting,
-			kSuccess,
-			kFailure,
-			kTimeout,
-			kCancelled,
+			kAwaiting,  /**< not yet started */
+			kSuccess,   /**< completed successfully */
+			kFailure,   /**< failed to complete task */
+			kTimeout,   /**< timed out attempting task  */
+			kCancelled, /**< job was cancelled */
 			kMax
 		};
 
@@ -266,11 +269,10 @@ class Transaction {
 		 * job completete successfully.
 		 */
 		struct Requirement {
-			Job *from;
+			Job *from; /**< from which job is the requirement? */
 			Job *to;       /**< on which job is the requirement? */
 			bool required; /**< whether this *must* be met */
-			bool goal_required; /**< whether *must* be met for goal
-					     */
+			bool goal_required; /**< whether goal requires it */
 
 			/**
 			 * Create a requirement.
@@ -290,21 +292,16 @@ class Transaction {
 		};
 
 		Schedulable::SPtr object; /*< object on which to operate */
-		JobType type;
+		JobType type;		  /**< which operation to carry out */
 		std::unordered_set<std::unique_ptr<Requirement>>
 		    reqs; /**< requirements to other jobs */
 		std::unordered_set<Requirement *>
 		    reqs_on; /**< requirements on this job */
-		bool goal_required = false;
+		bool goal_required = false; /**< is this required for goal? */
 
-		/**
-		 * \defgroup runstate State for running jobs
-		 * @{
-		 */
 		Id id = -1;		     /**< unique ID */
 		Evloop::timerid_t timer = 0; /**< timeout timer id */
 		State state = kAwaiting;     /**< state */
-		/** @} */
 
 		Job(Schedulable::SPtr object, JobType type)
 		    : object(object)
@@ -327,7 +324,7 @@ class Transaction {
 
 		/**
 		 * How should this job be ordered with respect to \p other given
-		 * this job has a kAfter dependency on that job?
+		 * this job has a #kAfter dependency on that job?
 		 *
 		 * @retval -1 This should run before \p other
 		 * @retval 1 \p other should run before this.
@@ -339,12 +336,13 @@ class Transaction {
 	};
 
     protected:
-	Scheduler &sched;
-	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>> jobs;
+	Scheduler &sched; /**< the scheduler this tx is associated with */
+	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>>
+	    jobs;	/**< maps objects to all jobs for that object */
 	Job *objective; /**< the job this tx aims to achieve */
 
 	/**
-	 * @brief Add a new job including all of its dependencies
+	 * Add a new job including all of its dependencies
 	 * @param is_goal Whether this job is to be the goal job of the tx.
 	 * @retval NULL Job could not be added.
 	 * @retval Pointer to the created job.
@@ -423,13 +421,15 @@ class Scheduler {
     protected:
 	App &app;
 
-	std::unordered_set<Schedulable::SPtr> objects;
+	std::unordered_set<Schedulable::SPtr> objects; /**< all objects */
 	std::unordered_map<ObjectId, Schedulable::SPtr, ObjectId::HashFn>
-	    m_aliases;
-	std::queue<std::unique_ptr<Transaction>> transactions;
+	    m_aliases; /**< maps all names to an associated object */
+	std::queue<ObjectId> m_loadqueue; /**< object IDs to be loaded */
+	std::queue<std::unique_ptr<Transaction>>
+	    transactions; /**< the transaction queue */
 	std::unordered_map<Transaction::Job::Id, Transaction::Job *>
-	    running_jobs;
-	Transaction::Job::Id last_jobid = 0;
+	    running_jobs;		     /**< jobs currently running */
+	Transaction::Job::Id last_jobid = 0; /**< job id counter */
 
     private:
 	/** Invoke restarter & places the job in the #running_jobs map. */
@@ -442,14 +442,25 @@ class Scheduler {
 	/** Called when a job has timed out. */
 	void job_timeout_cb(Evloop::timerid_t id, uintptr_t udata);
 
+	/**
+	 * Remap all edges from to and to an object, which are not owned by that
+	 * object, to another object. Moves the edges as necessary.
+	 */
+	void object_remap_unowned_edges(Schedulable::SPtr obj,
+	    Schedulable::SPtr newobj);
+
 	/** Enqueue the set of leaf jobs ready to start immediately. */
 	int tx_enqueue_leaves(Transaction *tx);
 
-	void log_job_complete(ObjectId id, Transaction::Job::State res);
+	/** Log that a job has completed. */
+	void log_job_complete(Transaction::Job * job);
 
     public:
+	/** Create a new scheduler as part of a given app. */
 	Scheduler(App &app)
 	    : app(app) {};
+
+	void dispatch_load_queue();
 
 	/**
 	 * Add an edge from one object to another. If the to-node does not
@@ -458,10 +469,6 @@ class Scheduler {
 	Edge *edge_add(Edge::Type type, ObjectId owner, ObjectId from,
 	    ObjectId to);
 
-	/**
-	 * @defgroup jobs Job management
-	 * @{
-	 */
 	/**
 	 * Get the job matching the given ID, if there is one.
 	 */
@@ -473,10 +480,6 @@ class Scheduler {
 	/** @} */
 
 	/**
-	 * @defgroup objects Object management
-	 * @{
-	 */
-	/**
 	 * Add an object created outwith the scheduler.
 	 */
 	Schedulable::SPtr object_add(Schedulable::SPtr obj);
@@ -485,27 +488,28 @@ class Scheduler {
 	 */
 	Schedulable::SPtr object_add(ObjectId id, Schedulable::SPtr obj);
 	/**
-	 * Retrieve the object matching the identifier, if there is one.
-	 * @retval NULL no such object
-	 * @retval Schedulable matching object
+	 * Retrieve the object matching the identifier, if none is found,
+	 * one is created and added to the load queue.
+	 * TODO: an "object_find" that simply finds an existing object or
+	 * NULL?
 	 */
 	Schedulable *object_get(ObjectId &id);
 	/**
-	 * Load an object into the scheduler as defined by its set of aliases, a
-	 * map of distal node identifiers to edge masks to create edges to, and
-	 * map of proximal node identifiers to edge masks to create edges from.
+	 * Load an object into the scheduler as defined by its set of
+	 * aliases, a map of distal node identifiers to edge masks to create
+	 * edges to, and map of proximal node identifiers to edge masks to
+	 * create edges from.
 	 */
 	void object_load(std::vector<std::string> aliases,
 	    std::map<std::string, Edge::Type> edges_from,
 	    std::map<std::string, Edge::Type> edges_to);
 	/**
 	 * Notify the scheduler that an object has changed state. This is a
-	 * orthogonal to the jobs system; state changes notified by this means
-	 * give rise to automatic transactions generated by the event-driven
-	 * impurity.
+	 * orthogonal to the jobs system; state changes notified by this
+	 * means give rise to automatic transactions generated by the
+	 * event-driven impurity.
 	 */
 	int object_set_state(ObjectId &id, Schedulable::State state);
-	/** @} */
 
 	/**
 	 * Generate and enqueue a transaction.
@@ -521,6 +525,7 @@ class Scheduler {
  * templates/inlines
  */
 
+/** Invoke a functor for each edge from an object. */
 template <typename T>
 T
 Schedulable::foreach_edge(T functor)

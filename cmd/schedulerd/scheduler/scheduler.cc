@@ -8,18 +8,6 @@
 #include "iwng_compat/misc.h"
 #include "scheduler.h"
 
-Edge::Edge(ObjectId owner, Type type, ObjectId from, ObjectId to)
-    : owner(owner)
-    , type(type)
-    , from(from)
-    , to(to)
-{
-}
-
-Edge::~Edge()
-{
-}
-
 const ObjectId &
 Schedulable::id() const
 {
@@ -35,7 +23,21 @@ ObjectId::operator==(const ObjectId &other) const
 bool
 ObjectId::operator==(const Schedulable::SPtr &obj) const
 {
-	return name == obj->id().name;
+	for (auto &id : obj->ids)
+		if (*this == id)
+			return true;
+
+	return false;
+}
+
+void
+Scheduler::dispatch_load_queue()
+{
+	while (!m_loadqueue.empty()) {
+		auto id = m_loadqueue.front();
+		app.m_js.loadObject(id.name);
+		m_loadqueue.pop();
+	}
 }
 
 Schedulable::SPtr
@@ -72,7 +74,8 @@ Scheduler::edge_add(Edge::Type type, ObjectId owner, ObjectId from, ObjectId to)
 int
 Scheduler::job_run(Transaction::Job *job)
 {
-	std::cout << "Starting " << job->object->id().name << "\n";
+	if (job->type == Transaction::kStart)
+		std::cout << "Starting " << job->object->id().name << "\n";
 	running_jobs[job->id] = job;
 	job->timer = app.add_timer(false, 700 /* JOB TIMEOUT MSEC */,
 	    std::bind(&Scheduler::job_timeout_cb, this, std::placeholders::_1,
@@ -105,8 +108,10 @@ Scheduler::job_runnable(Transaction::Job *job)
 		else if ((job2 = transactions.front()->object_job_for(
 			      dep->to)) != NULL &&
 		    job->after_order(job2) == 1) {
+#ifdef TRACE
 			std::cout << "Job " << *job << " must wait for "
 				  << *job2 << " to complete\n";
+#endif
 			if (job2->state != Transaction::Job::State::kSuccess)
 				return false;
 		}
@@ -125,7 +130,9 @@ Scheduler::tx_enqueue_leaves(Transaction *tx)
 			job->id = last_jobid++;
 
 		if (job_runnable(job)) {
+#ifdef TRACE
 			std::cout << *job << " is leaf, enqueueing\n";
+#endif
 			job_run(job);
 		}
 	}
@@ -149,8 +156,8 @@ Scheduler::job_complete(Transaction::Job::Id id, Transaction::Job::State res)
 	if (job->timer != 0)
 		app.del_timer(job->timer);
 	running_jobs.erase(id);
-	log_job_complete(job->object->id(), res);
 	job->state = res;
+	log_job_complete(job);
 
 	if (res == Transaction::Job::State::kSuccess &&
 	    job->type == Transaction::JobType::kRestart) {
@@ -184,8 +191,10 @@ start_others:
 		else if ((job2 = transactions.front()->object_job_for(
 			      dep->from)) != NULL &&
 		    job_runnable(job2)) {
+#ifdef JOBSCHED_TRACE
 			std::cout << "Job " << *job2 << " may run now that "
-				  << *job2 << " is complete\n";
+				  << *job << " is complete\n";
+#endif
 			job_run(job2);
 		}
 	}
@@ -199,8 +208,32 @@ Scheduler::object_get(ObjectId &id)
 	auto it = m_aliases.find(id);
 	if (it != m_aliases.end())
 		return it->second.get();
-	else
-		return nullptr;
+	else {
+		m_loadqueue.push(id);
+		return object_add(std::make_shared<Schedulable>(id.name)).get();
+	}
+}
+
+void
+Scheduler::object_remap_unowned_edges(Schedulable::SPtr obj,
+    Schedulable::SPtr newobj)
+{
+	/** TODO: what if an alias is bound by obj but not newobj? */
+	for (auto it = obj->edges.begin(); it != obj->edges.end();) {
+		if (!((*it)->owner == obj)) {
+			newobj->edges.emplace_back(std::move(*it));
+			it = obj->edges.erase(it);
+		} else
+			it++;
+	}
+
+	for (auto it = obj->edges_to.begin(); it != obj->edges_to.end();) {
+		if (!((*it)->owner == obj)) {
+			newobj->edges_to.emplace_back(std::move(*it));
+			it = obj->edges_to.erase(it);
+		} else
+			it++;
+	}
 }
 
 void
@@ -208,27 +241,30 @@ Scheduler::object_load(std::vector<std::string> aliases,
     std::map<std::string, Edge::Type> edges_from,
     std::map<std::string, Edge::Type> edges_to)
 {
-	Schedulable::SPtr obj;
+	Schedulable::SPtr obj = std::make_shared<Schedulable>();
+	obj->state = Schedulable::kOffline;
 
-	for (auto &alias : aliases)
-		m_aliases.erase(alias);
+	for (auto &alias : aliases) {
+		auto it = m_aliases.find(alias);
 
-	if (obj == NULL)
-		obj = std::make_shared<Schedulable>();
+		if (it != m_aliases.end()) {
+			/* edges not belonging to the object must be moved */
+			object_remap_unowned_edges(it->second, obj);
+			m_aliases.erase(alias);
+		}
+	}
 
-	for (auto &alias : aliases)
+	for (auto &alias : aliases) {
+		m_aliases[alias] = obj;
 		obj->ids.push_back(alias);
+	}
 
 	for (auto &edge : edges_from) {
-		std::cout << "Edge " << Edge::type_str(edge.second) << " to "
-			  << edge.first << "\n";
-		// obj->add_edge(edge.second, edge.first);
+		edge_add(edge.second, obj->id(), obj->id(), edge.first);
 	}
 
 	for (auto &edge : edges_to) {
-		std::cout << "Edge " << Edge::type_str(edge.second) << " from "
-			  << edge.first << "\n";
-		// obj->add_edge(edge.second, edge.first);
+		edge_add(edge.second, obj->id(), edge.first, obj->id());
 	}
 }
 
@@ -251,37 +287,46 @@ static struct {
 	[Transaction::Job::State::kCancelled] = { ANSI_HL_GREEN, "Cancel" },
 };
 
+static std::string job_op_root[Transaction::JobType::kRestart + 1] = {
+	[Transaction::kStart] = "Start",
+	[Transaction::kVerify] = "Verify",
+	[Transaction::kStop] = "Stopp",
+	[Transaction::kReload] = "Reload",
+	[Transaction::kRestart] = "Restart",
+};
+
 void
-Scheduler::log_job_complete(ObjectId id, Transaction::Job::State res)
+Scheduler::log_job_complete(Transaction::Job *job)
 {
-	auto &desc = job_complete_msg[res];
+	auto &desc = job_complete_msg[job->state];
 	std::ostringstream msg_col;
 	std::string code_col = "[" + desc.code + desc.msg + ANSI_CLEAR + "]";
 	bool succ = false;
+	std::string &op = job_op_root[job->type];
 
-	switch (res) {
+	switch (job->state) {
 	case Transaction::Job::State::kSuccess:
-		msg_col << "Started ";
+		msg_col << op << "ed ";
 		succ = true;
 		break;
 
 	case Transaction::Job::State::kFailure:
-		msg_col << "Failed to start ";
+		msg_col << "Failed " << op << "ing";
 		break;
 
 	case Transaction::Job::State::kTimeout:
-		msg_col << "Timed out starting ";
+		msg_col << "Timed out " << op << "ing";
 		break;
 
 	case Transaction::Job::State::kCancelled:
-		msg_col << "Cancelled starting ";
+		msg_col << "Cancelled " << op << "ing";
 		break;
 
 	default:
 		assert(!"unreached");
 	}
 
-	msg_col << id.name;
+	msg_col << " " << job->object->id().name;
 
 	std::cout << std::left << std::setw(67) << msg_col.str() << std::right
 		  << std::setw(12) << code_col << "\n";

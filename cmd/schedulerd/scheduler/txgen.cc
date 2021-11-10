@@ -7,10 +7,10 @@ Transaction::Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op)
     : sched(sched)
 {
 	objective = job_submit(object, op, true);
-	to_graph(std::cout);
+	// to_graph(std::cout);
 	if (!verify_acyclic())
 		throw("Transaction is unresolveably cyclical");
-	to_graph(std::cout);
+	// to_graph(std::cout);
 }
 
 void
@@ -292,11 +292,13 @@ Transaction::job_submit(Schedulable::SPtr object, JobType op,
 	Job *sj = NULL;	     /* newly created or existing subjob */
 	bool exists = false; /* whether the subjob already exists */
 
+	std::cout << "Submitting job on object " + object->id().name + "\n";
 	if (jobs.find(object) != jobs.end()) {
 		for (auto rnge = jobs.equal_range(object);
 		     rnge.first != rnge.second; rnge.first++) {
-			if (rnge.second->second->type == op) {
-				sj = rnge.second->second.get();
+			if (rnge.first->second->type == op) {
+				sj = rnge.first->second.get();
+				exists = true;
 				break;
 			}
 		}
