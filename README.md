@@ -1,23 +1,21 @@
-Neo-InitWare
-============
+![InitKit](docs/Logo.png)
+=========================
 
-This repository contains a novel implementation of the systemd service
-manager/init system. Neo-InitWare makes a strong effort to faithfully replicate
-the semantics of the systemd job engine and transaction generator, the very
-components that define systemd.
+**InitKit** is the standard Unix init system. It is designed for flexibility in
+accordance with a special operationalisation of the principles of the Unix Way.
+A novel implementation of the *systemd* init system in JavaScript is hosted atop
+a lightweight native framework. Relatively high fidelity is maintained to the
+semantics of the systemd transaction generator and job engine.
 
-Neo-InitWare is not intended at present to be an alternative to systemd nor to
-be used in production. The code is being written in exploratory fashion for now,
-with only minimal regard to correctness.
-
-Classical [InitWare](https://github.com/InitWare/InitWare) is a more stable,
-conservative approach to a more modular and portable systemd.
+InitKit is not intended at present to be be used in production. The code is
+being written in exploratory fashion for now, and refactoring of some components
+will be necessary.
 
 Architecture
 ------------
 
-The Neo-InitWare Scheduler Service, the program which implements the majority of
-the Neo-InitWare system, is implemented in a modular, layered fashion. We will
+The InitKit Scheduler Service, the program which implements the majority of
+the InitKit system, is implemented in a modular, layered fashion. We will
 start with the lowest levels of that service and proceed upwards.
 
 ## Portability Layer
@@ -28,14 +26,14 @@ this layer.
 
 ## Event Loop (EVLOOP)
 
-Neo-InitWare is designed with asynchronicity in mind. A Kernel Queues (or
+InitKit is designed with asynchronicity in mind. A Kernel Queues (or
 Libkqueue on non-BSD systems) event loop is the centrepiece of this.
 
 ## Core Services
 
 This layer is comprised of several modules which integrate with one-another.
 
-#### Job Scheduler (JOBSCHED)
+### Job Scheduler (JOBSCHED)
 
 Job scheduling is more thoroughly described in the `niw_scheduling(7)` manual
 page.
@@ -66,7 +64,7 @@ start.
 
 The result of a transaction is the result of its goal job.
 
-#### Process Manager (PROCMAN)
+### Process Manager (PROCMAN)
 
 Carries out the low-level tasks of OS process management. Processes are observed
 and on GNU/Linux and BSD platforms, this extends to tracking processes as they
@@ -75,7 +73,7 @@ create subprocesses and exit (Kernel Queues or CGroups can do this.)
 Process launch may be hooked by Process Launch Extensions to alter the execution
 environment prior to launching an actual subprocess.
 
-#### Service Virtual Machines Monitor (SVMMON)
+### Service Virtual Machines Monitor (SVMMON)
 
 Governs JavaScript virtual machines provided by the QuickJS library. Extensive
 integration with the other core services is provided for. A small library of
@@ -83,16 +81,16 @@ functionality to integrate with the operating system directly is provided; the
 interfaces are mostly similar to those of Node.JS. A WebWorkers-like API
 provides for out-of-process modules to run.
 
-#### Reference Monitor (REFMON)
+### Reference Monitor (REFMON)
 
-This verifies that requests originating outwith the Neo-InitWare scheduler service
-hold a right to query a particular object. All connections to the Neo-InitWare over
+This verifies that requests originating outwith the InitKit scheduler service
+hold a right to query a particular object. All connections to the InitKit over
 the management interface are associated with a set of rights, e.g. to start or
 stop a particular object, to query any object's status, or to shut down the
 service manager. Any request made over the management interface must be
 authorised by the Reference Monitor before the action can be carried out.
 
-#### Schedulable Object Graph (OBJGRAPH)
+### Schedulable Object Graph (OBJGRAPH)
 
 All objects in the system are maintained in an object graph. This graph
 maintains a description of each object sufficient for the other core services to
@@ -104,6 +102,10 @@ from.
 
 Various higher-level services are written in JavaScript and run in the virtual
 machines.
+
+### InitKit Subsystem for Systemd Services (ISSS)
+
+These components implement support for 
 
 #### Systemd Manifest Loader
 

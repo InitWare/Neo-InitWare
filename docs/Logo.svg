@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="540mm"
+   height="190mm"
+   viewBox="0 0 540 190"
+   version="1.1"
+   id="svg8"
+   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
+   sodipodi:docname="Logo.svg"
+   inkscape:export-filename="\\wsl$\openSUSE-Leap-15.3\ws\Projects\InitKit\doc\Logo.png"
+   inkscape:export-xdpi="37.629631"
+   inkscape:export-ydpi="37.629631"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <defs
+     id="defs2" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="0.34729209"
+     inkscape:cx="1305.8172"
+     inkscape:cy="666.58587"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1017"
+     inkscape:window-x="892"
+     inkscape:window-y="166"
+     inkscape:window-maximized="1"
+     inkscape:document-rotation="0"
+     inkscape:pagecheckerboard="0"
+     showguides="true"
+     width="60mm" />
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(0,-147)">
+    <path
+       style="fill:#262626;fill-opacity:1;stroke-width:0.238888"
+       d="m 125.27792,239.40451 c 5.69981,-1.33727 9.61585,-3.38891 13.33832,-6.98801 7.16295,-6.92556 8.4219,-16.91708 3.14789,-24.98301 -1.19553,-1.82842 -4.35605,-5.00629 -6.24078,-6.27504 -1.82797,-1.23053 -4.82095,-2.73161 -6.54266,-3.28133 -1.86895,-0.59674 -1.92157,-0.66392 -1.75655,-2.24269 0.18162,-1.73771 -0.247,-4.96035 -1.00991,-7.59297 -3.24612,-11.2017 -13.86724,-19.76685 -27.23449,-21.96261 -3.49314,-0.57381 -9.37202,-0.56663 -12.640609,0.0154 -5.241715,0.93341 -10.429993,2.98309 -14.637471,5.78264 -2.456092,1.63423 -5.968491,4.95167 -7.87071,7.43385 -1.31816,1.72004 -1.470822,1.84222 -2.233856,1.78789 -3.343443,-0.23809 -7.936384,-0.12196 -9.794292,0.24762 -8.202795,1.63175 -14.76423,6.36928 -18.158309,13.11077 l -0.923067,1.83345 -1.738296,-0.13026 c -2.026149,-0.15185 -6.324233,0.41717 -8.728705,1.15556 -5.081317,1.56042 -9.296667,4.2589 -12.550125,8.03401 -1.686653,1.95709 -3.795052,6.13555 -4.330384,8.58202 -0.5368125,2.45322 -0.4903251,6.23705 0.105341,8.57433 0.588506,2.30916 1.812835,4.94531 3.197677,6.88505 1.277798,1.78979 4.328827,4.72631 6.18742,5.95519 3.329799,2.20161 8.158296,3.96519 12.134668,4.43211 0.972424,0.11418 22.999232,0.19025 48.94847,0.16901 47.106008,-0.0385 47.183818,-0.0394 49.330428,-0.543 z"
+       id="path841"
+       inkscape:connector-curvature="0" />
+    <flowRoot
+       xml:space="preserve"
+       id="flowRoot856"
+       style="font-style:normal;font-weight:normal;font-size:176px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       transform="matrix(0.26458333,0,0,0.26458333,19.201337,99.1957)"><flowRegion
+         id="flowRegion858"
+         style="fill:#ffffff"><rect
+           id="rect860"
+           width="573.86365"
+           height="226.13635"
+           x="9.09091"
+           y="351.02005"
+           style="fill:#ffffff" /></flowRegion><flowPara
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:176px;font-family:Onyx;-inkscape-font-specification:Onyx;fill:#ffffff"
+         id="flowPara864">NetaScale</flowPara></flowRoot>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:38.8056px;line-height:125%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#262626;fill-opacity:1;stroke:none;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
+       x="18.960035"
+       y="271.29825"
+       id="text876"><tspan
+         sodipodi:role="line"
+         id="tspan874"
+         x="18.960035"
+         y="271.29825"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:38.8056px;font-family:Onyx;-inkscape-font-specification:Onyx;fill:#262626;fill-opacity:1;stroke-width:0.264583px">Systems Ltd.</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:141.111px;line-height:1.25;font-family:sans-serif;fill:#262626;fill-opacity:1;stroke:none;stroke-width:0.264583"
+       x="155.19855"
+       y="273.86508"
+       id="text785"><tspan
+         sodipodi:role="line"
+         id="tspan783"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:141.111px;font-family:Roboto;-inkscape-font-specification:Roboto;fill:#262626;fill-opacity:1;stroke-width:0.264583"
+         x="155.19855"
+         y="273.86508"><tspan
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:141.111px;font-family:Roboto;-inkscape-font-specification:'Roboto Bold';fill:#262626;fill-opacity:1"
+   id="tspan3325">Init</tspan>Kit</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-weight:normal;font-size:40.5694px;line-height:1.25;font-family:sans-serif;fill:#262626;fill-opacity:1;stroke:none;stroke-width:0.264583"
+       x="12.548722"
+       y="315.3681"
+       id="text7625"><tspan
+         sodipodi:role="line"
+         id="tspan7623"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:40.5694px;font-family:'Script MT Bold';-inkscape-font-specification:'Script MT Bold, ';fill:#262626;fill-opacity:1;stroke-width:0.264583"
+         x="12.548722"
+         y="315.3681">The Standard Unix Init System</tspan></text>
+  </g>
+</svg>

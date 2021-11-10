@@ -17,13 +17,13 @@
   <refnamediv>
     <refname>niw_scheduling</refname>
 
-    <refpurpose>the Neo-InitWare job scheduling model</refpurpose>
+    <refpurpose>the InitKit job scheduling model</refpurpose>
   </refnamediv>
 
   <refsection>
     <title>Description</title>
 
-    <para>The Neo-InitWare job scheduler is designed to provide for the
+    <para>The InitKit job scheduler is designed to provide for the
     automatic scheduling of services, with regard to both how services ought
     to be started or stopped to reach a particular goal, and the ways in which
     dynamic events ought to affect the running services.</para>
@@ -32,15 +32,15 @@
     Group's systemd, and is mostly compatible therewith. So this manual page
     is largely applicable to systemd as well, though some differences do exist
     (which are enumerated in the notes section). The three central concepts of
-    Neo-InitWare's job scheduler, which have counterparts in the systemd job
-    scheduler, are called the Holy Trinity of Neo-Initware: jobs, objects, and
+    InitKit's job scheduler, which have counterparts in the systemd job
+    scheduler, are called the Holy Trinity of InitKit: jobs, objects, and
     dependencies. A less elegant fourth component, the Event-based Impurity,
     is also shared with systemd.</para>
 
     <refsection>
       <title> Objects</title>
 
-      <para>Objects are the founding concept of Neo-InitWare. An object is a
+      <para>Objects are the founding concept of InitKit. An object is a
       logical entity encapsulating a resource or service. Objects may be
       explicitly manageable to some degree (e.g. a service or a network
       interface) or not (e.g. a device). They are monitored (and managed, if
