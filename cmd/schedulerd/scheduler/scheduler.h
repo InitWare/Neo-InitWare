@@ -233,17 +233,19 @@ class Transaction {
 
     public:
 	enum JobType {
+		kInvalid = -1,
 		kStart,	  /**< start the object */
 		kVerify,  /**< check the object is online */
 		kStop,	  /**< stop the object */
 		kReload,  /** reload the object */
 		kRestart, /** stop then start the object */
 
-		kTryStart,	/**< as kStart, but only as requirement of
-				   kTryRestart */
-		kTryRestart,	/**< restart if up, otherwise nop */
-		kTryReload,	/**< reload if up, otherwise nop */
-		kReloadOrStart, /**< reload if up, otherwise start */
+		kTryStart,	 /**< as kStart, but only as requirement of
+				    kTryRestart */
+		kTryRestart,	 /**< restart if up, otherwise nop */
+		kTryReload,	 /**< reload if up, otherwise nop */
+		kReloadOrStart,	 /**< reload if up, otherwise start */
+		kRestartOrStart, /**< restart if up, otherwise start */
 		kMax,
 	};
 
@@ -336,10 +338,18 @@ class Transaction {
 	};
 
     protected:
+	static const JobType merge_matrix[kMax][kMax];
+
 	Scheduler &sched; /**< the scheduler this tx is associated with */
 	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>>
 	    jobs;	/**< maps objects to all jobs for that object */
 	Job *objective; /**< the job this tx aims to achieve */
+
+	/**
+	 * Returns whichever job type results from merging types \p a and \p b,
+	 * or #kInvalid if the merge is impossible.
+	 */
+	static JobType merged_job_type(JobType a, JobType b);
 
 	/**
 	 * Add a new job including all of its dependencies
@@ -357,6 +367,9 @@ class Transaction {
 	    bool is_goal = false);
 
     private:
+	typedef std::multimap<Schedulable::SPtr, std::unique_ptr<Job>>::iterator
+	    JobIterator;
+
 	/**
 	 * Tries to break a cycle (path of cycle indicated by \path) by finding
 	 * an object whose jobs are not required for the goal, and deletes those
@@ -372,6 +385,9 @@ class Transaction {
 	 * @retval false if transaction is cyclic
 	 */
 	bool verify_acyclic();
+
+	int merge_jobs(std::vector<Job *> &to_merge);
+	int merge_jobs();
 
 	/**
 	 * Determine whether an ordering cycle is created by the presence of

@@ -144,7 +144,9 @@ bool
 Scheduler::tx_enqueue(Schedulable::SPtr object, Transaction::JobType op)
 {
 	transactions.emplace(std::make_unique<Transaction>(*this, object, op));
+#if 0
 	tx_enqueue_leaves(transactions.front().get());
+#endif
 	return true;
 }
 
@@ -243,6 +245,8 @@ Scheduler::object_load(std::vector<std::string> aliases,
 {
 	Schedulable::SPtr obj = std::make_shared<Schedulable>();
 	obj->state = Schedulable::kOffline;
+
+	objects.insert(obj);
 
 	for (auto &alias : aliases) {
 		auto it = m_aliases.find(alias);

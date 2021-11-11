@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cassert>
 #include <iostream>
 
 #include "scheduler.h"
@@ -10,6 +11,8 @@ Transaction::Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op)
 	// to_graph(std::cout);
 	if (!verify_acyclic())
 		throw("Transaction is unresolveably cyclical");
+	if (merge_jobs() < 0)
+		throw("Transaction contains unmergeable jobs");
 	// to_graph(std::cout);
 }
 
@@ -234,6 +237,108 @@ restart:
 	return true;
 }
 
+/* clang-format off */
+const Transaction::JobType Transaction::merge_matrix[kMax][kMax] = {
+	/* 		START		VERIFY		STOP		RELOAD		RESTART		TRYSTART	TRYRESTART	TRYRELOAD	RELOADORSTART */
+	[kStart] = {},
+	[kVerify] = {	kStart,	 },
+	[kStop] = {	kInvalid,	kInvalid },
+	[kReload] = {	kStart, 	kStart,		kInvalid, },
+	[kRestart] = {	kRestart,	kRestart,	kInvalid, 	kRestart },
+
+	[kTryStart] = {	kStart,		kStart,		kInvalid,	kReloadOrStart,	kRestart },
+	[kTryRestart] = { kRestartOrStart,kRestartOrStart,kInvalid,	kTryRestart,	kRestart,	kRestartOrStart, },
+	[kTryReload] = { kReloadOrStart,kReloadOrStart,	kInvalid,	kReload,	kRestart,	kReloadOrStart, kRestartOrStart },
+	[kReloadOrStart] = { kReloadOrStart,kReloadOrStart,kInvalid,	kReloadOrStart, kRestartOrStart,kReloadOrStart,	kReloadOrStart, kReloadOrStart },
+	[kRestartOrStart] = { kRestartOrStart,kRestartOrStart,kInvalid,	kRestartOrStart,kRestartOrStart,kRestartOrStart,kRestartOrStart,kRestartOrStart,kRestartOrStart},
+};
+/* clang-format on */
+
+Transaction::JobType
+Transaction::merged_job_type(JobType a, JobType b)
+{
+	if (a == b)
+		return a;
+	else if (a > b)
+		return merge_matrix[a][b];
+	else
+		return merge_matrix[b][a];
+}
+
+int
+Transaction::merge_jobs(std::vector<Job *> &to_merge)
+{
+	do {
+		Job *j1, *j2;
+		JobType merged;
+
+		j1 = to_merge.back();
+		to_merge.pop_back();
+		j2 = to_merge.back();
+		to_merge.pop_back();
+
+		merged = merged_job_type(j1->type, j2->type);
+
+		if (merged == kInvalid) {
+			Job *jtodel;
+
+			std::cout << "Jobs " << *j1 << " and " << *j2
+				  << " are unmergeable\n";
+
+			if (j1->goal_required && j2->goal_required) {
+				std::cout
+				    << "Both are goal-required; merge failed.\n";
+				return -1;
+			} else if (!j1->goal_required && !j2->goal_required) {
+				if (j2->type == kStop)
+					jtodel = j2;
+				else
+					jtodel = j1;
+			} else if (!j1->goal_required)
+				jtodel = j1;
+			else if (!j2->goal_required)
+				jtodel = j2;
+
+			std::cout << "Selected " << *jtodel << "to delete.\n";
+		} else {
+			std::cout << "Jobs " << *j1 << " and " << *j2
+				  << " merged to form" << type_str(merged)
+				  << "\n";
+		}
+
+	} while (to_merge.size() > 1);
+
+	return 0;
+}
+
+int
+Transaction::merge_jobs()
+{
+	bool first = true;
+	JobIterator start_of_obj;
+
+	std::cout << "Merging jobs begins.\n";
+
+	for (auto it = jobs.begin(); it != jobs.end();) {
+		Schedulable::SPtr obj = it->first;
+		std::vector<Job *> to_merge;
+
+		do {
+			to_merge.push_back(it++->second.get());
+		} while (it != jobs.end() && obj == it->first);
+
+		//		std::cout <<
+
+		if (to_merge.size() > 1)
+			if (merge_jobs(to_merge) < 0)
+				return -1;
+	}
+
+	std::cout << "Merging jobs ends.\n";
+
+	return 0;
+}
+
 #pragma endregion
 
 #pragma region TX Generation
@@ -402,8 +507,7 @@ Transaction::to_graph(std::ostream &out) const
 const char *
 Transaction::type_str(JobType type)
 {
-	static const char *const types[] = {
-		[JobType::kStart] = "start",
+	static const char *const types[] = { [JobType::kStart] = "start",
 		[JobType::kVerify] = "verify",
 		[JobType::kStop] = "stop",
 		[JobType::kReload] = "reload",
@@ -413,6 +517,6 @@ Transaction::type_str(JobType type)
 		[JobType::kTryRestart] = "try_restart",
 		[JobType::kTryReload] = "try_reload",
 		[JobType::kReloadOrStart] = "reload_or_Start",
-	};
-	return types[type];
+		[JobType::kRestartOrStart] = "restart_or_start" };
+	return type == kInvalid ? "invalid" : types[type];
 }

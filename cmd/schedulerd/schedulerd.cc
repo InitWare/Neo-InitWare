@@ -62,5 +62,6 @@ main(int argc, char *argv[])
 
 	//! test code ends
 
+	// return 0;
 	return app.loop();
 }

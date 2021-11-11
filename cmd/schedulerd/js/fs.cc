@@ -91,10 +91,8 @@ get_symlinks(const char *path, std::vector<std::string> &names)
 			/* opened successfully with O_NOFOLLOW. */
 			close(fd);
 			return 0;
-		} else if (errno != NOFOLLOW_SYMLINK_ERRNO) {
-			printf("open %s got errno %s\n", path, strerror(errno));
+		} else if (errno != NOFOLLOW_SYMLINK_ERRNO)
 			return -errno;
-		}
 
 		ret = readlink_absolute(path, buf);
 		if (ret < 0)
