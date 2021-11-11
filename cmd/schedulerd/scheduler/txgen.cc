@@ -16,17 +16,6 @@ Transaction::Transaction(Scheduler &sched, Schedulable::SPtr object, JobType op)
 	// to_graph(std::cout);
 }
 
-void
-Transaction::Job::get_del_list(std::vector<Job *> &dellist)
-{
-	dellist.push_back(this);
-	for (auto &req_on : reqs_on) {
-		if (req_on->required) {
-			req_on->from->get_del_list(dellist);
-		}
-	}
-}
-
 Transaction::Job::~Job()
 {
 	/** remove all requirements on this subjob from others' reqs */
@@ -74,28 +63,57 @@ Transaction::Job::after_order(Job *other)
 		return 1; /* ordinary ordering for other job types */
 }
 
+void
+Transaction::get_del_list(Job *job, std::vector<std::unique_ptr<Job>> &dellist)
+{
+	/** TODO: Should also remove any jobs wanted solely by \p job */
+
+	for (auto &req_on : job->reqs_on) {
+		if (req_on->required) {
+			get_del_list(req_on->from, dellist);
+		}
+	}
+
+	for (auto it = jobs[job->object].begin(); it != jobs[job->object].end();
+	     it++)
+		if (it->get() == job) {
+			dellist.emplace_back(std::move(*it));
+			jobs[job->object].erase(it);
+			return;
+		}
+}
+
 /** Delete all jobs on \p object. */
 void
 Transaction::object_del_jobs(Schedulable::SPtr object)
 {
+#if 0
 	std::vector<Job *> dellist;
 
-	for (auto rnge = jobs.equal_range(object); rnge.first != rnge.second;
-	     rnge.first++) {
-		auto &job = rnge.first->second;
-
+	for (auto &job : jobs[object])
 		job->get_del_list(dellist);
-	}
 
 	for (auto job : dellist)
-		multimap_erase_if(jobs, UniquePtrEq<Job>(job));
+		jobs.erase(std::remove_if(jobs.begin(), jobs.end(),
+		    UniquePtrEq<Job>(job)));
+#endif
+
+	std::vector<std::unique_ptr<Job>> dellist;
+
+	for (auto it = jobs[object].begin(); it != jobs[object].end();) {
+		get_del_list(it->get(), dellist);
+		// dellist.emplace_back(std::move(*it));
+		// it = jobs[object].erase(it);
+	}
 }
 
 Transaction::Job *
 Transaction::object_job_for(Schedulable::SPtr object)
 {
 	auto it = jobs.find(object);
-	return it == jobs.end() ? nullptr : it->second.get();
+	return it == jobs.end() ? nullptr :
+	    it->second.empty()	? nullptr :
+					it->second.front().get();
 }
 
 Transaction::Job *
@@ -103,7 +121,8 @@ Transaction::object_job_for(ObjectId id)
 {
 	for (auto &pair : jobs) {
 		if (id == pair.first)
-			return pair.second.get();
+			return pair.second.empty() ? nullptr :
+							   pair.second.front().get();
 	}
 	return nullptr;
 }
@@ -172,11 +191,9 @@ Transaction::object_creates_cycle(Schedulable::SPtr job,
 bool
 Transaction::object_requires_all_jobs(Schedulable::SPtr object)
 {
-	for (auto rnge = jobs.equal_range(object); rnge.first != rnge.second;
-	     rnge.first++) {
-		auto job = rnge.first->second.get();
+	for (auto &job : jobs[object]) {
 
-		if (job == objective) {
+		if (job.get() == objective) {
 			std::cout << "not deleting " << *job
 				  << "; is objective\n";
 			return true;
@@ -223,14 +240,12 @@ Transaction::verify_acyclic()
 restart:
 	for (auto &job : jobs) {
 		std::vector<Schedulable::SPtr> path;
-		if (object_creates_cycle(job.second->object, path)) {
+		if (object_creates_cycle(job.second.front()->object, path)) {
 			printf("CYCLE DETECTED:\n");
 			for (auto &obj : path)
 				printf("%s -> ", obj->id().name.c_str());
 			printf("%s\n", path.front()->id().name.c_str());
-			if (try_remove_cycle(path))
-				goto restart; /* iterator invalidated */
-			else
+			if (!try_remove_cycle(path))
 				return false;
 		}
 	}
@@ -266,21 +281,41 @@ Transaction::merged_job_type(JobType a, JobType b)
 }
 
 int
-Transaction::merge_jobs(std::vector<Job *> &to_merge)
+Transaction::merge_job_into(Job *job, Job *into)
+{
+	/* TODO: could check if existing reqs present? does it matter? */
+	for (auto it = job->reqs.begin(); it != job->reqs.end(); it++) {
+		(*it)->from = into;
+	}
+
+	into->reqs.merge(job->reqs);
+
+	for (auto &req : job->reqs_on) {
+		req->to = into;
+	}
+
+	into->reqs_on.merge(job->reqs_on);
+
+	if (job->goal_required)
+		into->goal_required = true;
+
+	return 0;
+}
+
+int
+Transaction::merge_jobs(std::list<std::unique_ptr<Job>> &to_merge)
 {
 	do {
-		Job *j1, *j2;
+		auto it1 = to_merge.begin(), it2 = ++to_merge.begin();
+		auto &j1 = *it1, &j2 = *it2;
 		JobType merged;
-
-		j1 = to_merge.back();
-		to_merge.pop_back();
-		j2 = to_merge.back();
-		to_merge.pop_back();
 
 		merged = merged_job_type(j1->type, j2->type);
 
 		if (merged == kInvalid) {
-			Job *jtodel;
+			auto jtodel = to_merge.begin();
+			std::vector<std::unique_ptr<Job>> dellist;
+			bool del_2 = false;
 
 			std::cout << "Jobs " << *j1 << " and " << *j2
 				  << " are unmergeable\n";
@@ -291,19 +326,27 @@ Transaction::merge_jobs(std::vector<Job *> &to_merge)
 				return -1;
 			} else if (!j1->goal_required && !j2->goal_required) {
 				if (j2->type == kStop)
-					jtodel = j2;
-				else
-					jtodel = j1;
-			} else if (!j1->goal_required)
-				jtodel = j1;
-			else if (!j2->goal_required)
-				jtodel = j2;
+					del_2 = true;
+			} else if (!j2->goal_required)
+				del_2 = true;
 
-			std::cout << "Selected " << *jtodel << "to delete.\n";
+			if (del_2)
+				jtodel = it2;
+			else
+				jtodel = it1;
+
+			std::cout << "Selected " << **jtodel << " to delete.\n";
+
+			get_del_list(jtodel->get(), dellist);
+
+			for (auto &job : dellist)
+				std::cout << " -> Deleting " << *job << "\n";
 		} else {
 			std::cout << "Jobs " << *j1 << " and " << *j2
-				  << " merged to form" << type_str(merged)
+				  << " merged to form " << type_str(merged)
 				  << "\n";
+			merge_job_into(j1.get(), j2.get());
+			to_merge.pop_front();
 		}
 
 	} while (to_merge.size() > 1);
@@ -319,18 +362,9 @@ Transaction::merge_jobs()
 
 	std::cout << "Merging jobs begins.\n";
 
-	for (auto it = jobs.begin(); it != jobs.end();) {
-		Schedulable::SPtr obj = it->first;
-		std::vector<Job *> to_merge;
-
-		do {
-			to_merge.push_back(it++->second.get());
-		} while (it != jobs.end() && obj == it->first);
-
-		//		std::cout <<
-
-		if (to_merge.size() > 1)
-			if (merge_jobs(to_merge) < 0)
+	for (auto &group : jobs) {
+		if (group.second.size() > 1)
+			if (merge_jobs(group.second) < 0)
 				return -1;
 	}
 
@@ -398,23 +432,24 @@ Transaction::job_submit(Schedulable::SPtr object, JobType op,
 	bool exists = false; /* whether the subjob already exists */
 
 	std::cout << "Submitting job on object " + object->id().name + "\n";
+
 	if (jobs.find(object) != jobs.end()) {
-		for (auto rnge = jobs.equal_range(object);
-		     rnge.first != rnge.second; rnge.first++) {
-			if (rnge.first->second->type == op) {
-				sj = rnge.first->second.get();
+		for (auto &job : jobs[object]) {
+			if (job->type == op) {
+				sj = job.get();
 				exists = true;
 				break;
 			}
 		}
+	} else {
+		jobs[object] =
+		    std::list<std::unique_ptr<Job>>(); /* create the entry */
 	}
 
 	if (!sj) /* must create a new job */
-	{
-		sj = jobs.insert(std::make_pair(object,
-				     std::make_unique<Job>(object, op)))
-			 ->second.get();
-	}
+		sj = jobs[object]
+			 .emplace_back(std::make_unique<Job>(object, op))
+			 .get();
 
 	if (goal_required)
 		sj->goal_required = true;
@@ -476,28 +511,24 @@ Transaction::Job::to_graph(std::ostream &out, bool edges) const
 void
 Transaction::to_graph(std::ostream &out) const
 {
-	Schedulable *obj = nullptr;
 	out << "digraph TX {\n";
 	out << "graph [compound=true];\n";
 
-	for (auto &job : jobs) {
-		if (job.first.get() != obj) {
-			if (obj != NULL)
-				out << "}\n"; /* terminate previous subgraph */
+	for (auto &obj : jobs) {
+		out << "subgraph cluster_" + obj.first->id().name + " {\n";
+		out << "label=\"" + obj.first->id().name + "\";\n";
+		out << "color=lightgrey;\n";
 
-			obj = job.first.get();
-			out << "subgraph cluster_" + obj->id().name + " {\n";
-			out << "label=\"" + obj->id().name + "\";\n";
-			out << "color=lightgrey;\n";
-		}
+		for (auto &job : obj.second)
+			job->to_graph(out, false);
 
-		job.second->to_graph(out, false);
+		out << "}\n"; /* terminate final subgraph */
 	}
-	out << "}\n"; /* terminate final subgraph */
 
 	/* now output edges */
-	for (auto &job : jobs)
-		job.second->to_graph(out, true);
+	for (auto &pair : jobs)
+		for (auto &job : pair.second)
+			job->to_graph(out, true);
 
 	out << "}\n";
 }

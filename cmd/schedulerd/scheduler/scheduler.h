@@ -320,10 +320,6 @@ class Transaction {
 		 * and its to-node's reqs_on. */
 		void del_req(Requirement *req);
 
-		/** Fill \p dellist with all jobs to be deleted to
-		 * remove this job (i.e. all requiring jobs). */
-		void get_del_list(std::vector<Job *> &dellist);
-
 		/**
 		 * How should this job be ordered with respect to \p other given
 		 * this job has a #kAfter dependency on that job?
@@ -341,7 +337,7 @@ class Transaction {
 	static const JobType merge_matrix[kMax][kMax];
 
 	Scheduler &sched; /**< the scheduler this tx is associated with */
-	std::multimap<Schedulable::SPtr, std::unique_ptr<Job>>
+	std::map<Schedulable::SPtr, std::list<std::unique_ptr<Job>>>
 	    jobs;	/**< maps objects to all jobs for that object */
 	Job *objective; /**< the job this tx aims to achieve */
 
@@ -367,8 +363,12 @@ class Transaction {
 	    bool is_goal = false);
 
     private:
-	typedef std::multimap<Schedulable::SPtr, std::unique_ptr<Job>>::iterator
-	    JobIterator;
+	typedef std::map<Schedulable::SPtr,
+	    std::list<std::unique_ptr<Job>>>::iterator JobIterator;
+
+	/** Fill \p dellist with all jobs to be deleted to
+	 * remove a job (i.e. all requiring jobs). */
+	void get_del_list(Job *job, std::vector<std::unique_ptr<Job>> &dellist);
 
 	/**
 	 * Tries to break a cycle (path of cycle indicated by \path) by finding
@@ -386,7 +386,8 @@ class Transaction {
 	 */
 	bool verify_acyclic();
 
-	int merge_jobs(std::vector<Job *> &to_merge);
+	int merge_job_into(Job *job, Job *into);
+	int merge_jobs(std::list<std::unique_ptr<Job>> &to_merge);
 	int merge_jobs();
 
 	/**

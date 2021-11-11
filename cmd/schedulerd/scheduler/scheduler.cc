@@ -124,7 +124,10 @@ int
 Scheduler::tx_enqueue_leaves(Transaction *tx)
 {
 	for (auto &it : tx->jobs) {
-		auto job = it.second.get();
+		auto job = it.second.front().get();
+
+		if (it.second.empty())
+			continue;
 
 		if (job->id == -1)
 			job->id = last_jobid++;
@@ -144,7 +147,8 @@ bool
 Scheduler::tx_enqueue(Schedulable::SPtr object, Transaction::JobType op)
 {
 	transactions.emplace(std::make_unique<Transaction>(*this, object, op));
-#if 0
+	transactions.front()->to_graph(std::cout);
+#if 1
 	tx_enqueue_leaves(transactions.front().get());
 #endif
 	return true;
