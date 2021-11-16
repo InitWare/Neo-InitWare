@@ -11,7 +11,7 @@
 const ObjectId &
 Schedulable::id() const
 {
-	return ids.front();
+	return main_alias;
 }
 
 bool
@@ -23,11 +23,7 @@ ObjectId::operator==(const ObjectId &other) const
 bool
 ObjectId::operator==(const Schedulable::SPtr &obj) const
 {
-	for (auto &id : obj->ids)
-		if (*this == id)
-			return true;
-
-	return false;
+	return obj->aliases.find(*this) != obj->aliases.end();
 }
 
 void
@@ -247,7 +243,7 @@ Scheduler::object_load(std::vector<std::string> aliases,
     std::map<std::string, Edge::Type> edges_from,
     std::map<std::string, Edge::Type> edges_to)
 {
-	Schedulable::SPtr obj = std::make_shared<Schedulable>();
+	Schedulable::SPtr obj = std::make_shared<Schedulable>(aliases.front());
 	obj->state = Schedulable::kOffline;
 
 	objects.insert(obj);
@@ -264,7 +260,7 @@ Scheduler::object_load(std::vector<std::string> aliases,
 
 	for (auto &alias : aliases) {
 		m_aliases[alias] = obj;
-		obj->ids.push_back(alias);
+		obj->aliases.insert(alias);
 	}
 
 	for (auto &edge : edges_from) {

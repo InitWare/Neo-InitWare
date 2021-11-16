@@ -67,12 +67,9 @@ void
 Transaction::get_del_list(Job *job, std::vector<std::unique_ptr<Job>> &dellist)
 {
 	/** TODO: Should also remove any jobs wanted solely by \p job */
-
-	for (auto &req_on : job->reqs_on) {
-		if (req_on->required) {
-			get_del_list(req_on->from, dellist);
-		}
-	}
+	for (auto &todel : dellist)
+		if (todel.get() == job)
+			return;
 
 	for (auto it = jobs[job->object].begin(); it != jobs[job->object].end();
 	     it++)
@@ -81,6 +78,12 @@ Transaction::get_del_list(Job *job, std::vector<std::unique_ptr<Job>> &dellist)
 			jobs[job->object].erase(it);
 			return;
 		}
+
+	for (auto &req_on : job->reqs_on) {
+		if (req_on->required) {
+			get_del_list(req_on->from, dellist);
+		}
+	}
 }
 
 /** Delete all jobs on \p object. */
@@ -101,7 +104,7 @@ Transaction::object_del_jobs(Schedulable::SPtr object)
 	std::vector<std::unique_ptr<Job>> dellist;
 
 	for (auto it = jobs[object].begin(); it != jobs[object].end();) {
-		get_del_list(it->get(), dellist);
+		get_del_list(it++->get(), dellist);
 		// dellist.emplace_back(std::move(*it));
 		// it = jobs[object].erase(it);
 	}
@@ -240,7 +243,8 @@ Transaction::verify_acyclic()
 restart:
 	for (auto &job : jobs) {
 		std::vector<Schedulable::SPtr> path;
-		if (object_creates_cycle(job.second.front()->object, path)) {
+		if ((!job.second.empty()) &&
+		    object_creates_cycle(job.second.front()->object, path)) {
 			printf("CYCLE DETECTED:\n");
 			for (auto &obj : path)
 				printf("%s -> ", obj->id().name.c_str());

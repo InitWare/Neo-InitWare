@@ -13,219 +13,48 @@
 
 #include "../app/evloop.h"
 #include "iwng_compat/misc_cxx.h"
+#include "object.h"
 
 class App;
 class Job;
-class Schedulable;
 class Scheduler;
 class Restarter;
 
-#define BITFLAG(n) (1 << n)
-
-/** A unique identifier for an object. An object may have many of these. */
-struct ObjectId {
-	struct HashFn {
-		std::size_t operator()(const ObjectId &id) const
-		{
-			return std::hash<std::string>()(id.name);
-		}
-	};
-
-	std::string name; /**< full name of the object */
-
-	ObjectId(std::string name)
-	    : name(name) {};
-	ObjectId(const char *name)
-	    : name(name) {};
-
-	bool operator==(const ObjectId &other) const;
-	bool operator==(const std::shared_ptr<Schedulable> &obj) const;
-};
-
-/** An edge between two entities in the Schedulable Objects Graph. */
-class Edge {
-	friend class Schedulable;
-	friend class Scheduler;
-
+/** A task to be carried out. */
+class Task : Printable<Task> {
     public:
-	class Visitor {
-		virtual void operator()(std::unique_ptr<Edge> &edge) = 0;
-	};
-
-	/**
-	 * This enumerated type defines which relationships #from has with #to.
-	 */
-	enum Type {
-		/**
-		 * \defgroup Co-Enqueue Enqueue Other Jobs
-		 * @{
-		 */
-		/**
-		 * For a start job, enqueue a required dependency start job on
-		 * #to.
-		 */
-		kAddStart = BITFLAG(0),
-		/**
-		 * For a start job, enqueue a non-required dependency start job
-		 * on #to, but ignore result.
-		 */
-		kAddStartNonreq = BITFLAG(1),
-		/**
-		 * For a start job, enqueue a required dependency verify (check
-		 * if online) job on #to, and fail if that fails.
-		 */
-		kAddVerify = BITFLAG(2),
-		/**
-		 * For a start job, enqueue a required dependency stop job on
-		 * #to.
-		 */
-		kAddStop = BITFLAG(3),
-		/**
-		 * For a start job, enqueue a non-required dependency stop job
-		 * on #to.
-		 */
-		kAddStopNonreq = BITFLAG(4),
-		/**
-		 * For a stop job, enqueue a non-required dependency stop job on
-		 * #to.
-		 */
-		kPropagatesStopTo = BITFLAG(5),
-		/**
-		 * For a restart job, enqueue a non-required dependency
-		 * try-restart job on #to.
-		 */
-		kPropagatesRestartTo = BITFLAG(6),
-		/**
-		 * For a reload job, enqueue a non-required dependency
-		 * try-reload job on #to.
-		 */
-		kPropagatesReloadTo = BITFLAG(7),
-
-		/**
-		 * @}
-		 *
-		 * \defgroup Post-Facto Enqueue Jobs After-The-Fact
-		 * @{
-		 */
-		/**
-		 * On unexpected start, enqueue a start job for #to.
-		 */
-		kStartOnStarted = BITFLAG(8),
-		/**
-		 * On unexpected start, enqueue a start job for #to if this
-		 * won't reverse any immediately upcoming extant job.
-		 */
-		kTryStartOnStarted = BITFLAG(9),
-		/**
-		 * On unexpected start, enqueue a stop job for #to.
-		 */
-		kStopOnStarted = BITFLAG(10),
-		/**
-		 * On unexpected stop, enqueue a stop job for #to.
-		 */
-		kStopOnStopped = BITFLAG(11),
-
-		/**
-		 * @}
-		 *
-		 * \defgroup Events Enqueue Jobs in Response to State Changes
-		 * @{
-		 */
-		/**
-		 * On entering offline state from online state, enqueue a start
-		 * job for #to.
-		 */
-		kOnSuccess = BITFLAG(12),
-		/**
-		 * On entering failed state, enqueue a start job for #to.
-		 */
-		kOnFailure = BITFLAG(13),
-
-		/**
-		 * @}
-		 *
-		 * \defgroup Ordering-and-Misc Ordering and Miscellaneous
-		 * @{
-		 */
-		/**
-		 * Attempt to run this job only after an existing job for #to
-		 * has ran within a transaction.
-		 */
-		kAfter = BITFLAG(14),
-		/**
-		 * Attempt to run this job before an existing job for #to may
-		 * run within a transaction.
-		 */
-		kBefore = BITFLAG(15), // FIXME: is this needed?
-
-		/**
-		 * @}
-		 */
-	};
-
-    public:
-	Type type; /**< Relationship type bitfield */
-
-	ObjectId owner; /**< Object whose configuration introduced this edge */
-	ObjectId from;	/**< Proximal object */
-	ObjectId to;	/**< Distal object */
-
-	Edge(ObjectId owner, Type type, ObjectId from, ObjectId to)
-	    : owner(owner)
-	    , type(type)
-	    , from(from)
-	    , to(to) {};
-
-	static std::string type_str(Type);
-	std::string type_str() const;
-
-	void to_graph(std::ostream &out) const;
-};
-
-/* The base class of all entities which may be scheduled. */
-class Schedulable : public std::enable_shared_from_this<Schedulable> {
-	friend class Scheduler;
-	friend class Edge;
-	friend class Transaction;
-	friend class EdgeVisitor;
-	friend class ObjectId;
-
-    public:
-	typedef std::weak_ptr<Schedulable> WPtr;
-	typedef std::shared_ptr<Schedulable> SPtr;
+	typedef int64_t Id;
 
 	enum State {
-		kUninitialised, /**< not [yet] loaded */
-		kOffline,	/**< not up */
-		kStarting,	/**< going up */
-		kOnline,	/**< up */
-		kStopping,	/**< going down */
-		kMaintenance,	/**< error occurred */
-		kMax,
+		kAwaiting,  /**< Not yet started */
+		kRunning,   /**< Currently running */
+		kSuccess,   /**< Completed successfully */
+		kFailure,   /**< Failed to complete*/
+		kTimeout,   /**< Timed out awaiting completion  */
+		kCancelled, /**< Job canceled before completion */
+		kMax
 	};
 
-    protected:
-	std::list<ObjectId> ids; /**< all identifiers of the node */
-	std::list<std::unique_ptr<Edge>> edges; /**< edges from this node */
-	std::list<Edge *> edges_to;		/**< edges to this node */
-	Restarter *restarter;
+	enum Flags {
+		/**
+		 * Task may not be serialised and recreated during re-execution.
+		 */
+		kUnrecreatable = 1,
+		/**
+		 * Task is to be scheduled by the rules of object jobs.
+		 */
+		kJob = 2,
+	};
 
-    public:
-	State state = kUninitialised;
+	Id id = -1;		     /**< unique identifier */
+	State state = kAwaiting;     /**< state of the task */
+	Evloop::timerid_t timer = 0; /**< timeout timer id */
+	Flags flags = (Flags)0;	     /**< bitmask of flags for this job */
 
-	Schedulable() {};
-	Schedulable(std::string name) { ids.push_back(name); };
-
-	/** Get the principal name of this node. */
-	const ObjectId &id() const;
-
-	template <typename T> T foreach_edge(T);
-
-	void to_graph(std::ostream &out) const;
-	std::string &state_str(State &state);
+	std::ostream &print(std::ostream &os) const;
 };
 
-/* A group of jobs in service of one job which defines the objective. */
+/** A group of jobs in service of one job which defines the objective. */
 class Transaction {
 	friend class EdgeVisitor;
 	friend class OrderVisitor;
@@ -253,19 +82,8 @@ class Transaction {
 	 * A Job is a state-changing and/or state-querying task for a
 	 * Schedulable object.
 	 */
-	struct Job : public Printable<Job> {
+	struct Job : public Printable<Job>, public Task {
 	    public:
-		typedef int64_t Id;
-
-		enum State {
-			kAwaiting,  /**< not yet started */
-			kSuccess,   /**< completed successfully */
-			kFailure,   /**< failed to complete task */
-			kTimeout,   /**< timed out attempting task  */
-			kCancelled, /**< job was cancelled */
-			kMax
-		};
-
 		/**
 		 * A requirement from one subjob that [a subjob of] another
 		 * job completete successfully.
@@ -300,10 +118,6 @@ class Transaction {
 		std::unordered_set<Requirement *>
 		    reqs_on; /**< requirements on this job */
 		bool goal_required = false; /**< is this required for goal? */
-
-		Id id = -1;		     /**< unique ID */
-		Evloop::timerid_t timer = 0; /**< timeout timer id */
-		State state = kAwaiting;     /**< state */
 
 		Job(Schedulable::SPtr object, JobType type)
 		    : object(object)
@@ -537,17 +351,5 @@ class Scheduler {
 
 	void to_graph(std::ostream &out) const;
 };
-
-/*
- * templates/inlines
- */
-
-/** Invoke a functor for each edge from an object. */
-template <typename T>
-T
-Schedulable::foreach_edge(T functor)
-{
-	return std::for_each(edges.begin(), edges.end(), functor);
-}
 
 #endif /* SCHEDULER_H_ */
