@@ -285,6 +285,7 @@ static struct {
 	std::string code, msg;
 } job_complete_msg[Transaction::Job::State::kMax] = {
 	[Transaction::Job::State::kAwaiting] = {},
+	[Transaction::Job::State::kRunning] = {},
 	[Transaction::Job::State::kSuccess] = { ANSI_HL_GREEN, "  OK  " },
 	[Transaction::Job::State::kFailure] = { ANSI_HL_RED, " Fail " },
 	[Transaction::Job::State::kTimeout] = { ANSI_HL_RED, " Time " },
